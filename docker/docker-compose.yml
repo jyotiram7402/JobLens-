@@ -1,0 +1,30 @@
+# Local development dependencies for JobLens.
+#
+# This file starts the infrastructure only (PostgreSQL). The backend and the
+# frontend are run directly from your IDE / terminal during development, which
+# keeps the feedback loop fast. Application images come later, when we prepare
+# for deployment.
+#
+# Usage (from the repository root, on a machine where Docker is allowed):
+#   docker compose -f docker/docker-compose.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: joblens-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-joblens}
+      POSTGRES_USER: ${DB_USERNAME:-joblens}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-joblens}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - joblens-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-joblens} -d ${DB_NAME:-joblens}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  joblens-pgdata:

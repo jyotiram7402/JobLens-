@@ -1,0 +1,7 @@
+# Profile used by the automated tests. Points at a throwaway PostgreSQL
+# instance (docker compose locally, a service container in GitHub Actions).
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:joblens_test}
+    username: ${DB_USERNAME:joblens}
+    password: ${DB_PASSWORD:joblens}
