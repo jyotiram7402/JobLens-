@@ -136,11 +136,13 @@ Free-first, verified against current free-tier terms when we actually deploy:
 
 - Source control — GitHub
 - Frontend — Vercel
-- Backend — Render (or an equivalent free/low-cost provider)
-- Database — a managed free-tier PostgreSQL provider
+- Backend — Render, deployed from `backend/Dockerfile`
+- Database — Neon (permanent free tier, no expiry)
 - AI service — free/low-cost hosting once it exists
 
 No paid infrastructure or paid APIs are introduced without explicit approval.
+Step-by-step setup, current free-tier limits and how to stay inside them:
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Beyond V1
 

@@ -40,13 +40,21 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] `render.yaml` blueprint for backend + PostgreSQL
 - [x] `frontend/vercel.json` SPA rewrite
 - [x] `docs/VERIFICATION.md` and `docs/DEPLOYMENT.md`
+- [x] Verified current Render / Vercel / Neon free-tier terms (2026-09-22) and
+      moved the database to Neon, because Render's free PostgreSQL expires
+      after 30 days
+- [x] JVM flags tuned for a 512 MB / 0.1 CPU free container
+- [x] CI triggers on `master` as well as `main`, so a push actually runs it
 
 ## Current
 
 Closing the Step 1 verification loop — see
 [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
+Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 - [ ] Push to GitHub and get **CI green** (backend + frontend jobs)
+- [ ] Create the Neon project; collect the five `DB_*` values
 - [ ] Create the Render blueprint; confirm `/actuator/health` returns `UP`
 - [ ] Confirm `flyway_schema_history` shows `V1` applied successfully
 - [ ] Deploy the frontend to Vercel with root directory `frontend` and
@@ -54,7 +62,7 @@ Closing the Step 1 verification loop — see
 - [ ] Set Render `CORS_ALLOWED_ORIGINS` to the Vercel origin and redeploy
 - [ ] Confirm the environment-check panel reports `API reachable: yes`
 - [ ] Confirm a deep-link reload renders the app 404, not a CDN 404
-- [ ] Verify the current Render/Vercel free-tier terms before relying on them
+- [ ] Decide whether to rename `master` to `main`
 - [ ] Once `npm install` has run somewhere permitted, commit
       `package-lock.json` and switch CI back to `npm ci` + npm cache
 - [ ] Confirm the pinned Spring Boot, React, Vite and Node versions resolve

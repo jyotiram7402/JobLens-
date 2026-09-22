@@ -57,7 +57,7 @@ curl -i <api>/api/v1/does-not-exist
 ```
 Expect a JSON error body, not an HTML error page.
 
-Database — in the Render database shell:
+Database — in the Neon SQL editor:
 
 ```sql
 \dt

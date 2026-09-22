@@ -29,4 +29,7 @@ COPY --from=build /build/target/*.jar app.jar
 # The provider injects PORT; application.yml honours it.
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+# Tuned for a 512 MB free-tier container: leave headroom outside the heap for
+# metaspace, threads and code cache, and use the serial collector because a
+# parallel GC on 0.1 CPU costs more than it saves.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65", "-XX:+UseSerialGC", "-jar", "/app/app.jar"]

@@ -1,20 +1,19 @@
-# Render blueprint for the JobLens backend and its database.
+# Render blueprint for the JobLens backend.
 #
-# IMPORTANT: free-tier availability, plan names and limits change. Verify the
-# current Render free tier before relying on this file -- in particular whether
-# free web services and free PostgreSQL instances are still offered, and how
-# long a free database lives before expiring. If Render no longer works for us,
-# the Dockerfile makes the same service portable to any other host.
+# The database is deliberately NOT created here. Render's free PostgreSQL
+# expires 30 days after creation (with a 14-day grace period, then deletion),
+# which is a poor fit for a portfolio project that needs to stay up. We use an
+# external provider with a permanent free tier instead -- Neon by default -- and
+# pass its credentials in as environment variables. See docs/DEPLOYMENT.md.
 #
-# Notes on the free tier as we understand it:
-#   - a free web service sleeps when idle, so the first request after a pause
-#     is slow. That is acceptable for a portfolio project.
-#   - a free PostgreSQL instance is time-limited. Expect to recreate it and
-#     re-run migrations; Flyway makes that safe.
+# Every DB_* variable is `sync: false`, so Render prompts for it and nothing
+# sensitive is ever committed.
 #
-# CORS_ALLOWED_ORIGINS must be set to the deployed frontend origin (the Vercel
-# URL) once it exists. It is intentionally left unset here so that a wrong
-# value is never committed.
+# Free-tier facts change. Verify before relying on them. As last checked:
+#   - free web service: 512 MB RAM, 0.1 CPU, 750 instance hours/month,
+#     spins down after ~15 minutes idle and takes up to a minute to wake.
+#   - 500 build minutes and 100 GB bandwidth per month.
+# If Render stops working for us, backend/Dockerfile runs anywhere.
 
 services:
   - type: web
@@ -27,35 +26,24 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: DB_HOST
-        fromDatabase:
-          name: joblens-db
-          property: host
+        sync: false
       - key: DB_PORT
-        fromDatabase:
-          name: joblens-db
-          property: port
+        sync: false
       - key: DB_NAME
-        fromDatabase:
-          name: joblens-db
-          property: database
+        sync: false
       - key: DB_USERNAME
-        fromDatabase:
-          name: joblens-db
-          property: user
+        sync: false
       - key: DB_PASSWORD
-        fromDatabase:
-          name: joblens-db
-          property: password
+        sync: false
+      # Managed databases reached over the public internet require TLS.
+      - key: DB_URL_PARAMS
+        value: "?sslmode=require"
+      # A 256 MB free database cannot serve many connections, and a 512 MB
+      # service does not need them.
+      - key: DB_POOL_SIZE
+        value: "3"
+      # Set to the deployed frontend origin, e.g. https://joblens.vercel.app
       - key: CORS_ALLOWED_ORIGINS
         sync: false
-      - key: DB_POOL_SIZE
-        value: "5"
       - key: APP_VERSION
         value: 0.1.0-SNAPSHOT
-
-databases:
-  - name: joblens-db
-    databaseName: joblens
-    user: joblens
-    plan: free
-    region: oregon

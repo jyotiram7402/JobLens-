@@ -50,15 +50,17 @@ loop.
 
 - `backend/Dockerfile` — multi-stage (Maven/JDK 21 build, JRE Alpine runtime),
   dependency layer cached separately from sources, runs as a non-root user,
-  `-XX:MaxRAMPercentage=75` for small containers. Tests are deliberately not
-  run in the image build; that is CI's job and would need a database here.
+  and JVM flags tuned for a small container (see the free-tier section below).
+  Tests are deliberately not run in the image build; that is CI's job and would
+  need a database here.
 - `server.port` now reads `${PORT:${SERVER_PORT:8080}}`.
 - `DB_URL_PARAMS` appended to the JDBC URL, so a managed database reached over
   the public internet can be given `?sslmode=require` without a code change.
-- `render.yaml` blueprint: Docker web service plus a PostgreSQL instance, with
-  database credentials injected via `fromDatabase`, health check on
-  `/actuator/health`, `DB_POOL_SIZE=5` for a small free instance, and
-  `CORS_ALLOWED_ORIGINS` marked `sync: false` so no wrong origin is committed.
+- `render.yaml` blueprint: Docker web service with the database supplied
+  externally, health check on `/actuator/health`, a small connection pool to
+  suit a small free database, and every `DB_*` plus `CORS_ALLOWED_ORIGINS`
+  marked `sync: false` so nothing sensitive or environment-specific is
+  committed.
 - `frontend/vercel.json` rewrites every path to `index.html`, which
   client-side routing requires.
 
@@ -67,12 +69,46 @@ loop.
 - `docs/VERIFICATION.md` — the loop, what to paste when a gate fails, and the
   Step 1 smoke tests (curl commands, the Flyway history query, the frontend
   checks, and the CORS/env-var troubleshooting order).
-- `docs/DEPLOYMENT.md` — one-time Render and Vercel setup, including the
-  monorepo root-directory setting, the internal-vs-external database host, free
-  services sleeping, free databases expiring, and why `VITE_` variables are
-  build-time and public.
+- `docs/DEPLOYMENT.md` — one-time Neon, Render and Vercel setup in dependency
+  order, including the monorepo root-directory setting, mapping a Neon
+  connection string onto the `DB_*` variables, free services sleeping, why
+  `VITE_` variables are build-time and public, how to test each layer for free,
+  and how to stay inside the limits.
 - `TODO.md` updated with a Step 1b section and the current verification
   checklist.
+
+## Free-tier research, and a changed decision
+
+Checked the providers rather than trusting yesterday's plan, and one decision
+changed as a result.
+
+**Render's free PostgreSQL expires 30 days after creation** (14-day grace
+period, then the database and its data are deleted). That is acceptable for a
+throwaway test and wrong for a portfolio project that should still be working
+when someone looks at it months later. The database moved to **Neon**, whose
+free tier has no expiry: ~0.5 GB storage, 100 compute-hours/month, scale-to-zero,
+and exceeding the limits suspends compute rather than deleting data. Supabase
+was the other candidate but pauses a project after a week of inactivity —
+precisely the traffic pattern a portfolio project has.
+
+`render.yaml` therefore no longer creates a database. All five `DB_*` variables
+are `sync: false` so Render prompts for them, and `DB_URL_PARAMS` is set to
+`?sslmode=require` because Neon refuses plaintext connections. This also makes
+the database provider swappable without touching code.
+
+**The free web service is 512 MB RAM and 0.1 CPU**, which changed the JVM
+flags: `MaxRAMPercentage` dropped from 75 to 65 to leave headroom for metaspace,
+threads and code cache outside the heap, and `-XX:+UseSerialGC` was added
+because a parallel collector on a tenth of a CPU costs more than it saves.
+Other limits worth knowing: 750 instance hours/month, sleeps after ~15 minutes
+idle and takes up to a minute to wake, 500 build minutes/month.
+
+## A second blocker found
+
+**CI would never have run.** The workflow triggered on `main`, but the local
+branch is `master`, so no push would have matched. The triggers now accept both.
+Renaming to `main` is still the conventional choice and is noted as optional in
+the deployment guide.
 
 ## Files created
 
