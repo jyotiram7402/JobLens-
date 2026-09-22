@@ -1,42 +1,101 @@
+# Configuration shared by every environment.
+#
+# Rules for this file:
+#   - no credentials, no hostnames, no environment-specific values;
+#   - anything that differs per environment lives in a profile file
+#     (application-dev.yml / application-prod.yml) or comes from the environment;
+#   - a development default is only acceptable where being wrong is harmless.
+#
+# The active profile defaults to dev, so a developer who sets nothing gets the
+# safe local setup. Production sets SPRING_PROFILES_ACTIVE=prod explicitly.
+
 spring:
   application:
     name: joblens-api
 
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   datasource:
-    # DB_URL_PARAMS carries provider-specific extras, e.g. "?sslmode=require"
-    # when connecting to a managed database over the public internet.
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:joblens}${DB_URL_PARAMS:}
-    username: ${DB_USERNAME:joblens}
-    password: ${DB_PASSWORD:}
+    # url, username and password are profile-specific: dev supplies local
+    # defaults, prod demands real environment variables and refuses to start
+    # without them. See application-dev.yml and application-prod.yml.
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
+      # Fail fast rather than hanging a request thread when the database is
+      # unreachable -- on free tiers it sometimes is.
+      connection-timeout: 10000
+
+  jpa:
+    # Flyway owns the schema. Hibernate only checks that the mapping matches it
+    # and refuses to start if it does not; it is never allowed to alter a table.
+    hibernate:
+      ddl-auto: validate
+    # Keeping a session open for the whole request hides lazy loading in the
+    # view layer, which turns one query into hundreds. Off, permanently.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          # Batch writes when a later step inserts many rows at once.
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
 
   flyway:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  jackson:
+    # ISO-8601 strings, not epoch numbers, so responses stay readable and
+    # unambiguous across time zones.
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
 server:
   # PORT is injected by most PaaS providers (Render, Railway, Fly).
   port: ${PORT:${SERVER_PORT:8080}}
+  error:
+    # The API returns its own error body from GlobalExceptionHandler. Spring's
+    # default error attributes must never leak into a response.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  shutdown: graceful
 
 management:
   endpoints:
     web:
       exposure:
+        # Only what is needed to run the service. Never "*".
         include: health,info
   endpoint:
     health:
       probes:
         enabled: true
+      # Health detail names internal components and their failure reasons, which
+      # is useful in a log and not something to hand an anonymous caller.
       show-details: never
+  info:
+    env:
+      enabled: false
 
 joblens:
   version: ${APP_VERSION:0.1.0-SNAPSHOT}
+  # Reported by /api/v1/meta so it is obvious which environment a client hit.
+  environment: ${JOBLENS_ENVIRONMENT:local}
   cors:
-    # Comma-separated list. Local Vite dev server by default.
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+    max-age-seconds: 3600
 
 logging:
+  pattern:
+    # %X{traceId} is populated by CorrelationIdFilter, so every line of a
+    # request can be tied back to the error the user saw.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"
   level:
+    root: INFO
     com.joblens: ${LOG_LEVEL_JOBLENS:INFO}

@@ -46,6 +46,34 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] JVM flags tuned for a 512 MB / 0.1 CPU free container
 - [x] CI triggers on `master` as well as `main`, so a push actually runs it
 
+### Step 2 - Backend architecture
+
+- [x] Domain-oriented package structure under `com.joblens.api`
+      (`config`, `common`, and boundary-only `user`/`company`/`job`/`matching`/
+      `tracking`/`scan`/`notification` packages)
+- [x] Module rules written down: `common` depends on nothing; modules talk
+      through services, never another module's repository
+- [x] Swapped the JDBC starter for Spring Data JPA
+- [x] JPA configured: `ddl-auto: validate`, `open-in-view: false`, UTC
+      timestamps, auditing enabled
+- [x] `BaseEntity` mapped superclass: id, audit timestamps, optimistic lock
+- [x] `ErrorCode` enum and `ApplicationException` hierarchy
+      (`ResourceNotFoundException`, `DuplicateResourceException`)
+- [x] `GlobalExceptionHandler` extending `ResponseEntityExceptionHandler`, so
+      Spring's own MVC errors return the same body
+- [x] `ApiError` response with `traceId`, and field-level validation details
+- [x] `PageResponse` envelope for future list endpoints
+- [x] `CorrelationIdFilter` -> MDC, response header, and error body
+- [x] Log pattern carrying `%X{traceId}`; SQL logging on in dev only
+- [x] Profile strategy: `application.yml` + `dev` / `prod` / `test`, with no
+      fallbacks at all on `prod`
+- [x] Typed, validated `CorsProperties`; no wildcard origin; Actuator excluded
+      from CORS
+- [x] `ApiRoutes.API_V1` constant; `/api/v1/meta` now reports the environment
+- [x] Test tiers established: plain unit, `@WebMvcTest` slice, and an
+      `@IntegrationTest` meta-annotation for full-context tests
+- [x] Render blueprint sets `SPRING_PROFILES_ACTIVE=prod`
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -69,23 +97,16 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 2 - Backend architecture
-
-- [ ] Agree the package-per-domain convention and write it down
-- [ ] Decide the persistence approach (Spring Data JPA vs JDBC) and record an ADR
-- [ ] Define the controller / service / repository layering rules
-- [ ] Decide the DTO and mapping approach
-- [ ] Define the API versioning and pagination conventions
-- [ ] Define the testing strategy (unit vs integration, database in tests)
-- [ ] Add a typed not-found / conflict exception family to `common`
-
 ### Step 3 - Database + Company
 
-- [ ] `V2__companies.sql` migration
-- [ ] Company domain module
-- [ ] Company REST API
+- [ ] `V2__companies.sql` migration, including the `BaseEntity` columns
+      (`id`, `created_at`, `updated_at`, `version`)
+- [ ] `Company` entity extending `BaseEntity`
+- [ ] `CompanyRepository`, `CompanyService`, `CompanyController`
+- [ ] Request/response DTO records with validation annotations
+- [ ] `GET /api/v1/companies` returning a `PageResponse`
 - [ ] Seed data for development
-- [ ] Integration tests
+- [ ] Repository slice test (`@DataJpaTest`) and controller slice test
 
 ## Future
 

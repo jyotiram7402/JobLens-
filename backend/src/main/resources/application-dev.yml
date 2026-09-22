@@ -1,0 +1,33 @@
+# Local development.
+#
+# Every value here has a default that works against the PostgreSQL container in
+# docker/docker-compose.yml, so `mvn spring-boot:run` works with no environment
+# set up at all. These defaults are safe precisely because they are useless
+# anywhere else: they point at localhost with a throwaway password.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:joblens}${DB_URL_PARAMS:}
+    username: ${DB_USERNAME:joblens}
+    password: ${DB_PASSWORD:joblens}
+
+  jpa:
+    # Statement logging is on in development only. It is noisy, it slows things
+    # down, and query text can contain user data -- none of which belongs in a
+    # production log.
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+joblens:
+  environment: ${JOBLENS_ENVIRONMENT:dev}
+  cors:
+    # The Vite dev server.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+logging:
+  level:
+    com.joblens: DEBUG
+    # Bind parameters, so a failing query can be reproduced by hand.
+    org.hibernate.orm.jdbc.bind: TRACE

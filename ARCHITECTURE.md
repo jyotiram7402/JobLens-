@@ -46,6 +46,216 @@ through its service interface, never by reaching into another domain's
 repository. If a module ever genuinely needs to be extracted, that boundary is
 already where it would be cut.
 
+Kafka, Redis and any split into services are postponed deliberately, not
+overlooked — see [ADR 0001](docs/decisions/0001-modular-monolith.md) and
+"Future evolution path" below. The concrete rules are under
+"Backend architecture → Module rules".
+
+## Backend architecture
+
+### Package structure
+
+The base package is `com.joblens.api`. Everything below it is either the shared
+kernel, application-wide configuration, or one domain module.
+
+```
+com.joblens.api
+├── JobLensApplication.java      entry point; scanning starts here
+│
+├── config/                      application-wide wiring only
+│   ├── CorsConfig.java          allowlisted origins for /api/v1/**
+│   ├── CorsProperties.java      typed, validated joblens.cors.* binding
+│   └── JpaConfig.java           auditing, with UTC timestamps
+│
+├── common/                      shared kernel -- depends on nothing
+│   ├── domain/BaseEntity.java   id, audit timestamps, optimistic lock version
+│   ├── exception/               ErrorCode, ApplicationException hierarchy,
+│   │                            GlobalExceptionHandler
+│   ├── response/                ApiError, PageResponse
+│   └── web/                     ApiRoutes, CorrelationIdFilter, MetaController
+│
+├── user/          step 4        accounts, credentials, profile
+├── company/       step 3        the canonical company record and its search
+├── job/           step 5        public openings belonging to a company
+├── matching/      step 7        scoring a job against a profile
+├── tracking/      step 10       followed companies and application status
+├── scan/          step 11       image capture and resolution to a company
+└── notification/  V2            telling a user about something
+```
+
+The domain packages exist as boundaries and contain a `package-info.java` and
+nothing else. They are not populated ahead of their roadmap step, and no
+placeholder CRUD was written to make them look busy.
+
+### Module rules
+
+Two rules keep the monolith modular rather than merely single-process:
+
+1. **`common` depends on nothing.** It must never import from a domain module.
+   A dependency in that direction turns the shared kernel into a cycle.
+2. **Modules talk through services, never repositories.** `job` may call
+   `CompanyService`; it may not touch `CompanyRepository` or a company entity's
+   table. This is the boundary that would become a network call if a module
+   were ever extracted.
+
+Enforcement is currently review discipline. An ArchUnit test could make it
+mechanical once there are enough modules for that to be worth the dependency.
+
+### Layering inside a module
+
+```
+Controller   HTTP only: routing, request validation, DTO in and out.
+             No business rules. Never returns an entity.
+    │
+Service      Business rules and the transaction boundary (@Transactional).
+             Knows nothing about HTTP -- no ResponseEntity, no status codes.
+    │
+Repository   Spring Data JPA. Persistence only.
+    │
+Entity       Owned by its module, never serialised to a client.
+```
+
+DTOs are Java records: immutable, with validation annotations on the request
+types. Entities never leave the service layer, because exposing one couples the
+public API to the schema and makes every column rename a breaking change.
+
+Dependencies are injected through constructors. No field injection, so a class
+cannot be constructed in an invalid state and tests need no reflection.
+
+### Error handling
+
+Every failure leaves through `GlobalExceptionHandler` and arrives as one shape:
+
+```json
+{
+  "timestamp": "2026-09-22T10:15:30Z",
+  "status": 400,
+  "error": "VALIDATION_ERROR",
+  "message": "Request validation failed",
+  "path": "/api/v1/companies",
+  "traceId": "6f1c2b9e4a7d4c31",
+  "details": { "name": "must not be blank" }
+}
+```
+
+`error` is an `ErrorCode` constant and part of the public contract -- clients
+branch on it, so it may not be renamed casually. `message` is human-readable and
+free to change. `details` is omitted when empty.
+
+The handler extends `ResponseEntityExceptionHandler`, so the responses Spring
+MVC generates itself -- unreadable JSON, wrong method, unsupported media type --
+come back in the same shape instead of Spring's default body. A client therefore
+only ever parses one error format.
+
+The important distinction is expected versus unexpected:
+
+- An `ApplicationException` (`ResourceNotFoundException`,
+  `DuplicateResourceException`, …) is expected. Its message was written for the
+  caller and is returned verbatim, logged at WARN.
+- Anything else is a bug. It is logged at ERROR with the stack trace, and the
+  client is told only that something went wrong. Exception messages routinely
+  contain table names, SQL fragments and file paths; none of that belongs in a
+  response.
+
+### Request correlation
+
+`CorrelationIdFilter` runs first in the chain and gives every request an id,
+published three ways: into the logging MDC (the log pattern prints it on every
+line), onto the `X-Correlation-Id` response header, and into the error body as
+`traceId`. An inbound header is honoured, so one trace can later span the
+frontend, the backend and the AI service without adding a tracing platform.
+
+A user can quote the id from an error and we can find the exact request.
+
+### Logging
+
+Standard SLF4J over Logback, configured in `application.yml` -- no logging
+framework of our own, and no observability platform yet. The console pattern
+includes `%X{traceId}`. Development logs at DEBUG with SQL and bind parameters;
+production logs at INFO with neither.
+
+Credentials, tokens, API keys and password fields are never logged, at any
+level. That is why `show-sql` is off in production: query text can contain user
+data.
+
+### Configuration and profiles
+
+```
+application.yml        shared, environment-neutral. No credentials, no hosts.
+application-dev.yml    local defaults that work against docker-compose.
+application-prod.yml   no defaults at all -- every value from the environment.
+application-test.yml   (test resources) points at a throwaway database.
+```
+
+The active profile defaults to `dev`, so a developer who sets nothing gets the
+safe local setup. Production sets `SPRING_PROFILES_ACTIVE=prod`, where a missing
+variable fails startup with a named placeholder rather than silently falling
+back to something local. A deployment that cannot reach its database should not
+come up looking healthy.
+
+CORS is bound to a validated `CorsProperties` record rather than scattered
+`@Value` lookups, so a typo in a property name fails at startup and `@NotEmpty`
+makes an unconfigured allowlist impossible. There is no wildcard origin and no
+`allowCredentials` -- authentication will use a bearer token, not a cookie.
+Only `/api/v1/**` is exposed; Actuator deliberately is not.
+
+### Database strategy
+
+Spring Data JPA over PostgreSQL, with Flyway owning the schema exclusively.
+
+- `ddl-auto: validate`. Hibernate checks its mapping against the migrated
+  schema and refuses to start on a mismatch. It never alters a table.
+- `open-in-view: false`. Keeping a session open across the view layer hides
+  lazy loading and turns one query into hundreds.
+- `BaseEntity` gives every entity a database-generated id, UTC audit
+  timestamps, and an optimistic-locking `version` so two concurrent updates
+  fail loudly instead of silently overwriting each other.
+- Timestamps are `Instant`, stored and compared as UTC.
+
+No business tables exist yet; `V1__baseline.sql` only establishes Flyway
+ownership. Each domain gets its own numbered migration in its own step.
+
+### API versioning
+
+Every endpoint is versioned from the first one: `/api/v1/...`, built from the
+`ApiRoutes.API_V1` constant so the prefix appears in exactly one place.
+
+```
+/api/v1/auth         step 4
+/api/v1/users        step 4
+/api/v1/companies    step 3
+/api/v1/jobs         step 5
+/api/v1/scans        step 11
+```
+
+Conventions: plural nouns for collections, HTTP verbs for actions, list
+endpoints return a `PageResponse` envelope rather than Spring Data's `Page`
+(whose serialised form is unstable and leaks internals). A breaking change means
+`/api/v2`, with v1 kept alive until nothing uses it.
+
+`/api/v1/meta` exists today and reports the application name, version and
+environment. Operational health stays on `/actuator/health`, so internal health
+detail is never exposed to a browser.
+
+### Testing strategy
+
+Four tiers, cheapest first:
+
+| Tier              | Annotation                      | Scope |
+| ----------------- | ------------------------------- | ----- |
+| Unit              | none                            | Plain JUnit, no Spring. The default for business logic. |
+| Controller slice  | `@WebMvcTest`                   | Web layer only, service beans mocked. No database. |
+| Repository slice  | `@DataJpaTest`                  | Queries and mappings against real PostgreSQL. |
+| Integration       | `@IntegrationTest` (custom)     | Full context, real database. |
+
+`@IntegrationTest` is a meta-annotation over `@SpringBootTest` +
+`@ActiveProfiles("test")`, defined once so configuration cannot drift between
+test classes and so Spring caches and reuses a single context across them.
+
+Tests run against real PostgreSQL rather than an in-memory database, because an
+in-memory database behaves differently from the thing we deploy -- which is
+precisely what an integration test is supposed to catch.
+
 ## Frontend / backend relationship
 
 Strictly separated. The React application is a static bundle; it holds no

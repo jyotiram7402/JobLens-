@@ -51,8 +51,8 @@ recommendation models trained on user behaviour, Kafka, Redis.
 | Layer          | Choice                                   |
 | -------------- | ---------------------------------------- |
 | Frontend       | React 18, TypeScript, Vite, React Router |
-| Backend        | Java 21, Spring Boot 3.3, Maven          |
-| Database       | PostgreSQL 16, Flyway migrations         |
+| Backend        | Java 21, Spring Boot 3.3, Maven — Web, Validation, Data JPA, Actuator |
+| Database       | PostgreSQL 16, Spring Data JPA, Flyway migrations |
 | AI / OCR       | Python, FastAPI (later step)             |
 | Infrastructure | Docker (local), GitHub Actions (CI)      |
 
@@ -67,6 +67,48 @@ React + TypeScript  ──HTTP/JSON──>  Spring Boot REST API  ──JDBC─�
 
 The backend is a **modular monolith**, not microservices. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the reasoning.
+
+### Backend architecture
+
+One deployable Spring Boot application under `com.joblens.api`, organised by
+domain rather than by technical layer:
+
+```
+config/     application-wide wiring (CORS, JPA auditing)
+common/     shared kernel: error handling, response shapes, BaseEntity, web plumbing
+user/ company/ job/ matching/ tracking/ scan/ notification/
+            domain modules -- boundaries only until their roadmap step
+```
+
+Inside a module: controller (HTTP only) → service (business rules and the
+transaction boundary) → repository (persistence). Entities never leave the
+service layer; DTOs are immutable records. Constructor injection throughout.
+
+`common` depends on no module, and modules talk to each other through services,
+never through another module's repository. That is the line a service would be
+extracted along if scale ever demanded it.
+
+### API convention
+
+All endpoints are versioned: `/api/v1/...`, plural nouns, list endpoints
+returning a `PageResponse` envelope. Every failure returns one error shape with
+a stable `error` code and a `traceId` that also appears on the
+`X-Correlation-Id` response header and on every log line for that request.
+
+```json
+{
+  "timestamp": "2026-09-22T10:15:30Z",
+  "status": 400,
+  "error": "VALIDATION_ERROR",
+  "message": "Request validation failed",
+  "path": "/api/v1/companies",
+  "traceId": "6f1c2b9e4a7d4c31",
+  "details": { "name": "must not be blank" }
+}
+```
+
+Live today: `GET /api/v1/meta` (application name, version, environment) and
+`GET /actuator/health`. Business endpoints arrive with their roadmap steps.
 
 ## Repository structure
 
@@ -97,10 +139,18 @@ cp .env.example .env                 # then set DB_PASSWORD
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Backend:
+Backend (runs on the `dev` profile by default, whose defaults match the
+compose file, so no environment setup is needed):
 
 ```bash
 cd backend && mvn spring-boot:run
+```
+
+Backend tests need the `joblens_test` database to exist:
+
+```bash
+docker exec -it joblens-postgres createdb -U joblens joblens_test
+cd backend && mvn verify
 ```
 
 Frontend:
@@ -126,9 +176,20 @@ tested locally — see `docs/daily/` for what remains unverified at each step.
 No credentials are committed. Both applications are configured through
 environment variables:
 
-- Backend: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`,
-  `SERVER_PORT`, `CORS_ALLOWED_ORIGINS`, `APP_VERSION`
-- Frontend: `VITE_API_BASE_URL`
+| Variable | Applies to | Notes |
+| -------- | ---------- | ----- |
+| `SPRING_PROFILES_ACTIVE` | backend | `dev` (default) or `prod`. |
+| `JOBLENS_ENVIRONMENT` | backend | Reported by `/api/v1/meta`. |
+| `DB_HOST` `DB_PORT` `DB_NAME` `DB_USERNAME` `DB_PASSWORD` | backend | Required on `prod`; defaulted to localhost on `dev`. |
+| `DB_URL_PARAMS` | backend | Provider extras, e.g. `?sslmode=require`. |
+| `DB_POOL_SIZE` | backend | Default 10; lower it on a small free database. |
+| `PORT` / `SERVER_PORT` | backend | `PORT` is injected by the host; do not set it yourself. |
+| `CORS_ALLOWED_ORIGINS` | backend | Exact origins, comma-separated. Required on `prod`. |
+| `APP_VERSION` `LOG_LEVEL_JOBLENS` | backend | Optional. |
+| `VITE_API_BASE_URL` | frontend | Baked in at build time; public. |
+
+On the `prod` profile these have no fallbacks: a missing one fails startup with
+a named placeholder rather than quietly running against something local.
 
 ## Deployment direction
 

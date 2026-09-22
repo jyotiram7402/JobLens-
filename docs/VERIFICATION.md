@@ -86,3 +86,37 @@ all; does `CORS_ALLOWED_ORIGINS` on Render exactly match the Vercel origin
 
 Each step adds its own section here, listing the endpoints and UI behaviour
 that must work before the step is considered done.
+
+### Step 2 — Backend architecture
+
+No new business endpoints, so the checks are about the machinery.
+
+```bash
+curl -i <api>/api/v1/meta
+```
+Expect `application`, `version` and `environment` — and an `X-Correlation-Id`
+response header on every response.
+
+```bash
+curl -i -H "X-Correlation-Id: my-trace-1" <api>/api/v1/meta
+```
+Expect `my-trace-1` echoed back, proving an inbound trace is honoured.
+
+```bash
+curl -i <api>/api/v1/nope
+```
+Expect a JSON `ApiError` body with `error`, `path` and `traceId` — not an HTML
+error page and not Spring's default body.
+
+```bash
+curl -i -X DELETE <api>/api/v1/meta
+```
+Expect `405` in that same `ApiError` shape.
+
+On the deployed backend, `/api/v1/meta` should report
+`"environment": "production"`. If it says `dev`, `SPRING_PROFILES_ACTIVE` is not
+reaching the container and the service is running with development defaults.
+
+In CI: the backend job must now run three test classes, one of which
+(`JobLensApplicationTests`) proves the context loads with JPA and that Flyway
+migrated a real database.

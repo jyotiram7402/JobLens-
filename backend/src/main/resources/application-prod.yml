@@ -1,0 +1,29 @@
+# Production.
+#
+# Deliberately no defaults. Every value below must be supplied by the
+# environment, and a missing one fails startup with a named placeholder instead
+# of silently falling back to something local. A deployment that cannot reach
+# its database should not appear healthy.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}${DB_URL_PARAMS:}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    show-sql: false
+
+joblens:
+  environment: ${JOBLENS_ENVIRONMENT:prod}
+  cors:
+    # Required. The exact frontend origin, e.g. https://joblens.vercel.app --
+    # scheme included, no trailing slash, comma-separated for more than one.
+    # CorsProperties is @Validated with @NotEmpty, so an empty value is a
+    # startup failure rather than a silently broken frontend.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+logging:
+  level:
+    root: INFO
+    com.joblens: ${LOG_LEVEL_JOBLENS:INFO}
