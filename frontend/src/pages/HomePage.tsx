@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { config } from '../lib/config';
 import { getApiMeta, type ApiMeta } from '../lib/api';
 
 type ConnectionState =
@@ -7,8 +8,9 @@ type ConnectionState =
   | { status: 'error'; message: string };
 
 /**
- * Landing page. For now it does one useful thing: prove the frontend is
- * correctly configured to reach the backend.
+ * Landing page. For now it does one useful thing: prove this deployment is
+ * correctly configured and can actually reach its backend. That makes it the
+ * smoke test for every environment we deploy to.
  */
 export function HomePage() {
   const [connection, setConnection] = useState<ConnectionState>({ status: 'loading' });
@@ -42,16 +44,27 @@ export function HomePage() {
         public job openings, matched against your profile.
       </p>
 
-      <h2>API connection</h2>
-      {connection.status === 'loading' && <p>Checking the backend…</p>}
-      {connection.status === 'ok' && (
-        <p>
-          Connected to <strong>{connection.meta.application}</strong> (version{' '}
-          {connection.meta.version}).
-        </p>
-      )}
+      <h2>Environment check</h2>
+      <dl className="env-check">
+        <dt>API base URL</dt>
+        <dd>{config.isApiConfigured ? <code>{config.apiBaseUrl}</code> : <em>not configured</em>}</dd>
+
+        <dt>API reachable</dt>
+        <dd>
+          {connection.status === 'loading' && 'checking…'}
+          {connection.status === 'ok' && (
+            <>
+              yes — <strong>{connection.meta.application}</strong> {connection.meta.version}
+            </>
+          )}
+          {connection.status === 'error' && <span role="alert">no</span>}
+        </dd>
+      </dl>
+
       {connection.status === 'error' && (
-        <p role="alert">Could not reach the API: {connection.message}</p>
+        <p className="env-error" role="alert">
+          {connection.message}
+        </p>
       )}
     </section>
   );

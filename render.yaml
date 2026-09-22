@@ -1,0 +1,61 @@
+# Render blueprint for the JobLens backend and its database.
+#
+# IMPORTANT: free-tier availability, plan names and limits change. Verify the
+# current Render free tier before relying on this file -- in particular whether
+# free web services and free PostgreSQL instances are still offered, and how
+# long a free database lives before expiring. If Render no longer works for us,
+# the Dockerfile makes the same service portable to any other host.
+#
+# Notes on the free tier as we understand it:
+#   - a free web service sleeps when idle, so the first request after a pause
+#     is slow. That is acceptable for a portfolio project.
+#   - a free PostgreSQL instance is time-limited. Expect to recreate it and
+#     re-run migrations; Flyway makes that safe.
+#
+# CORS_ALLOWED_ORIGINS must be set to the deployed frontend origin (the Vercel
+# URL) once it exists. It is intentionally left unset here so that a wrong
+# value is never committed.
+
+services:
+  - type: web
+    name: joblens-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: joblens-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: joblens-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: joblens-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: joblens-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: joblens-db
+          property: password
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: APP_VERSION
+        value: 0.1.0-SNAPSHOT
+
+databases:
+  - name: joblens-db
+    databaseName: joblens
+    user: joblens
+    plan: free
+    region: oregon

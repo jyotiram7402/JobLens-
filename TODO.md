@@ -23,20 +23,41 @@ Working checklist. Step numbers refer to [ROADMAP.md](ROADMAP.md).
 - [x] GitHub Actions CI workflow (backend build/test, frontend install/build)
 - [x] README, ARCHITECTURE, ROADMAP, TODO, `docs/daily/day-01.md`, ADR 0001
 
+### Step 1b - Verification scaffolding
+
+Since nothing can be run locally, CI and the deployed environments are the only
+proof the code works. This made them a prerequisite, not a final step.
+
+- [x] CI frontend job no longer requires a committed `package-lock.json`
+- [x] Frontend type-check added to CI
+- [x] Missing `VITE_API_BASE_URL` reports itself in the UI instead of rendering
+      a blank white page
+- [x] API client distinguishes unreachable/CORS failures from HTTP errors
+- [x] Home page shows an explicit environment-check panel
+- [x] Backend honours the `PORT` variable injected by PaaS providers
+- [x] `DB_URL_PARAMS` for provider-specific JDBC options (e.g. `sslmode`)
+- [x] `backend/Dockerfile` (multi-stage, non-root)
+- [x] `render.yaml` blueprint for backend + PostgreSQL
+- [x] `frontend/vercel.json` SPA rewrite
+- [x] `docs/VERIFICATION.md` and `docs/DEPLOYMENT.md`
+
 ## Current
 
-Verification of Step 1 on the permitted development/test machine.
+Closing the Step 1 verification loop — see
+[docs/VERIFICATION.md](docs/VERIFICATION.md).
 
-- [ ] Run `mvn verify` in `backend/` against a running PostgreSQL
-- [ ] Run `npm install` in `frontend/` and **commit `package-lock.json`**
-      (the CI frontend job uses `npm ci` and will fail until it exists)
-- [ ] Run `npm run build` and `npm run dev` in `frontend/`
-- [ ] Start `docker compose -f docker/docker-compose.yml up -d` and create the
-      `joblens_test` database
-- [ ] Confirm the home page reports a successful API connection
-- [ ] Initialise git, push to GitHub, confirm the CI workflow runs
-- [ ] Confirm the pinned Spring Boot, React, Vite and Node versions are the
-      ones we want
+- [ ] Push to GitHub and get **CI green** (backend + frontend jobs)
+- [ ] Create the Render blueprint; confirm `/actuator/health` returns `UP`
+- [ ] Confirm `flyway_schema_history` shows `V1` applied successfully
+- [ ] Deploy the frontend to Vercel with root directory `frontend` and
+      `VITE_API_BASE_URL` set
+- [ ] Set Render `CORS_ALLOWED_ORIGINS` to the Vercel origin and redeploy
+- [ ] Confirm the environment-check panel reports `API reachable: yes`
+- [ ] Confirm a deep-link reload renders the app 404, not a CDN 404
+- [ ] Verify the current Render/Vercel free-tier terms before relying on them
+- [ ] Once `npm install` has run somewhere permitted, commit
+      `package-lock.json` and switch CI back to `npm ci` + npm cache
+- [ ] Confirm the pinned Spring Boot, React, Vite and Node versions resolve
 
 ## Next
 

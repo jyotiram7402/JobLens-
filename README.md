@@ -147,3 +147,13 @@ No paid infrastructure or paid APIs are introduced without explicit approval.
 V2/V3 ideas are recorded in [ROADMAP.md](ROADMAP.md) — logo/visual recognition
 rather than text-only OCR, a mobile client, saved searches with alerts, employer
 verification, and richer AI job intelligence. None of this is being built now.
+
+## Verification workflow
+
+Because nothing can be built or run on the authoring machine, CI and the
+deployed environments are the only proof that the code works. Every step
+follows the same loop — generate, push, CI green, deploy, smoke test — and a
+failing gate is fixed before the next step begins.
+
+- The loop and the per-step smoke tests: [docs/VERIFICATION.md](docs/VERIFICATION.md)
+- One-time Render and Vercel setup: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)

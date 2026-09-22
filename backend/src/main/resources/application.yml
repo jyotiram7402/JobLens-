@@ -3,7 +3,9 @@ spring:
     name: joblens-api
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:joblens}
+    # DB_URL_PARAMS carries provider-specific extras, e.g. "?sslmode=require"
+    # when connecting to a managed database over the public internet.
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:joblens}${DB_URL_PARAMS:}
     username: ${DB_USERNAME:joblens}
     password: ${DB_PASSWORD:}
     hikari:
@@ -15,7 +17,8 @@ spring:
     baseline-on-migrate: true
 
 server:
-  port: ${SERVER_PORT:8080}
+  # PORT is injected by most PaaS providers (Render, Railway, Fly).
+  port: ${PORT:${SERVER_PORT:8080}}
 
 management:
   endpoints:
