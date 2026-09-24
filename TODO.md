@@ -74,6 +74,32 @@ proof the code works. This made them a prerequisite, not a final step.
       `@IntegrationTest` meta-annotation for full-context tests
 - [x] Render blueprint sets `SPRING_PROFILES_ACTIVE=prod`
 
+### Step 3 - Database + Company
+
+- [x] Identity strategy decided and documented: time-ordered UUID primary keys
+      (`BaseEntity` switched from `Long`/IDENTITY before any entity existed)
+- [x] Timestamp strategy: `Instant` stored as `timestamptz`, always UTC
+- [x] `V2__create_companies_table.sql` with constraints, unique indexes and
+      column comments
+- [x] `Company` entity with no public setters and no direct normalized-name access
+- [x] `CompanyRepository`: by id, by slug, by normalized name, paged search
+- [x] `CompanyService`: creation, retrieval, update, search, duplicate detection
+- [x] DTO records: `CreateCompanyRequest`, `UpdateCompanyRequest`,
+      `CompanyResponse`, `CompanySummary` — entities never leave the service
+- [x] `CompanyNameNormalizer`: deterministic, documented rules, Unicode-safe
+- [x] `SlugGenerator`: stable slugs with `-2`/`-3` collision suffixes
+- [x] Domain error codes `COMPANY_NOT_FOUND` and `COMPANY_ALREADY_EXISTS`
+- [x] `CompanyController`: create (201 + Location), search, get by id,
+      get by slug, update
+- [x] Validation on every field, with `http`/`https`-only URLs
+- [x] Page size capped at 50
+- [x] Dev-only seed data under `db/seed`, loaded by the dev profile alone
+- [x] Tests: normalizer, slug generator, service (Mockito), repository
+      (`@RepositoryTest`), controller (`@WebMvcTest`)
+- [x] `docs/api/companies.md` with full request/response examples
+- [x] `docs/daily/README.md` index, so day numbers and step numbers stop being
+      confused with each other
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -97,16 +123,23 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 3 - Database + Company
+### Step 4 - Authentication + User
 
-- [ ] `V2__companies.sql` migration, including the `BaseEntity` columns
-      (`id`, `created_at`, `updated_at`, `version`)
-- [ ] `Company` entity extending `BaseEntity`
-- [ ] `CompanyRepository`, `CompanyService`, `CompanyController`
-- [ ] Request/response DTO records with validation annotations
-- [ ] `GET /api/v1/companies` returning a `PageResponse`
-- [ ] Seed data for development
-- [ ] Repository slice test (`@DataJpaTest`) and controller slice test
+- [ ] `V3__create_users_table.sql`
+- [ ] `User` entity, repository and service in the `user` module
+- [ ] Registration and login, with BCrypt password hashing
+- [ ] JWT issuing and validation; secret from the environment, never committed
+- [ ] Spring Security configuration and filter chain
+- [ ] Secure the company write endpoints (`POST`, `PUT`); keep reads public
+- [ ] `401` / `403` mapped into the existing `ApiError` shape
+- [ ] User profile endpoints
+
+### Deferred from Step 3
+
+- [ ] `PATCH /api/v1/companies/{id}/active` to hide a company from search,
+      once there is an authenticated user allowed to press it
+- [ ] Client-configurable sorting on company search (step 6, with an allowlist)
+- [ ] Replace `LIKE '%term%'` with a `pg_trgm` GIN index (step 6)
 
 ## Future
 

@@ -212,8 +212,130 @@ Spring Data JPA over PostgreSQL, with Flyway owning the schema exclusively.
   fail loudly instead of silently overwriting each other.
 - Timestamps are `Instant`, stored and compared as UTC.
 
-No business tables exist yet; `V1__baseline.sql` only establishes Flyway
-ownership. Each domain gets its own numbered migration in its own step.
+Migrations so far:
+
+| Version | Purpose |
+| ------- | ------- |
+| `V1__baseline.sql` | Establishes Flyway ownership. No business tables. |
+| `V2__create_companies_table.sql` | The `companies` table, its constraints and indexes. |
+
+Each domain gets its own numbered migration in its own step. Applied migrations
+are never edited or renamed — a change means a new version.
+
+Development seed data lives in `db/seed` and is added to `spring.flyway.locations`
+**only by the dev profile**, so seeded rows cannot reach production.
+
+### The Company domain
+
+Companies are the spine of JobLens. A scan resolves to one, jobs belong to one,
+tracking follows one — so almost everything later points here, and the module
+owns three things nothing else is allowed to reimplement: what a company *is*,
+when two records are the *same* company, and what a company is *called* in a URL.
+
+Other modules will use `CompanyService`. Nothing outside the package touches
+`CompanyRepository` or the `Company` entity.
+
+#### Identifiers: UUID and slug
+
+Primary keys are **time-ordered UUIDs** (`UuidGenerator.Style.TIME`), stored in
+PostgreSQL's native 16-byte `uuid` type.
+
+The reason is exposure, not fashion. Ids appear in URLs, so a sequential
+`bigint` would publish how many companies exist and let anyone walk the entire
+table by counting upwards. That is a real problem for a product whose value is
+its dataset. A UUID also exists before the row does, which the scan flow will
+need to reference a company it is still resolving.
+
+The cost is honest: 16 bytes instead of 8, in this key and in every future
+foreign key. What makes it affordable is the *time-ordered* part. Random
+(version 4) UUIDs scatter inserts across the whole B-tree, so every insert
+dirties a different page and the index fragments badly; time-ordered values
+append to the right-hand edge like a sequence, keeping inserts and index size
+close to a `bigint`. Choosing UUID v4 here would have been the version that
+deserves the "sounds advanced, costs real performance" criticism.
+
+A UUID is not a readable URL, so every company also has a **slug**
+(`tata-consultancy-services`). The two identifiers have different jobs: the UUID
+is the stable key other resources reference; the slug is what a human sees.
+Names are not unique, so collisions get a numeric suffix (`acme`, `acme-2`), and
+a unique index — not the application check — is what guarantees it.
+
+**A slug is assigned once and never regenerated**, including when the company is
+renamed. It is a public identifier already present in links and caches;
+recomputing it on rename would silently break all of them.
+
+#### Timestamps
+
+`Instant`, stored as `timestamptz`, always UTC. An `Instant` is a moment on the
+timeline with no zone of its own, so it cannot be misread as local time. The
+database server, the container and a developer's laptop all disagree about
+"local", and none of them is allowed to influence a stored value; formatting for
+a user's zone is the frontend's job.
+
+They are set by Spring Data auditing rather than by hand or by trigger, so a
+service cannot forget one and cannot fake one.
+
+#### Normalized names
+
+Every company stores a `normalized_name` derived deterministically from `name`:
+NFKC, diacritics stripped, lowercased with `Locale.ROOT`, non-alphanumerics
+replaced with spaces, whitespace collapsed.
+
+```
+"Tata Consultancy Services"    ┐
+"TATA CONSULTANCY SERVICES"    ├─→ "tata consultancy services"
+"Tata  Consultancy  Services"  ┘
+"Nestlé S.A."                  ──→ "nestle s a"
+```
+
+Rule-based and not AI, because the result is stored in a unique index: it has to
+be reproducible on every machine, forever, with no model version or network call
+involved. It is what duplicate detection compares and what search matches
+against, which is why searching is insensitive to case, spacing, accents and
+punctuation without a single `LOWER()` in a query.
+
+A useful side effect: a normalized search term cannot contain `LIKE` wildcards,
+because `%` and `_` are removed before the value reaches a query.
+
+**It deliberately does not strip legal suffixes.** `Acme Ltd` and `Acme` stay
+two records. Deciding that `Ltd`, `Inc` and `GmbH` are noise is entity
+resolution, not normalization: it requires judgement per jurisdiction, it merges
+companies that genuinely are distinct legal entities, and a unique index makes a
+wrong merge permanent. That belongs to the AI company-resolution step, where a
+confidence score and human review exist. Same reasoning for transliteration and
+abbreviation expansion.
+
+#### Duplicate handling
+
+Two layers, and the order matters:
+
+1. The service looks up the normalized name first, purely to produce a good
+   error — one that names the existing company's slug so the caller can link to
+   it.
+2. The **unique index on `normalized_name`** is what actually prevents the
+   duplicate. The check and the insert are not atomic, so two simultaneous
+   requests can both pass step 1; only the database can settle that. The service
+   catches the violation and turns it into the same `409`.
+
+Writing only the application check would look correct and fail under
+concurrency; writing only the constraint would produce a 500 and a stack trace.
+
+#### Why entities are not exposed
+
+Controllers return `CompanyResponse` and `CompanySummary`, never `Company`.
+
+- The API would otherwise be welded to the schema, making every column rename a
+  breaking change for the frontend.
+- Internal fields would leak. `normalizedName` is a matching key, not
+  information about the company, and publishing it invites clients to depend on
+  normalization rules we intend to keep changing.
+- Serialising a JPA entity triggers lazy loading during serialisation, which is
+  how one request quietly becomes hundreds of queries.
+- The request DTOs have no field for `id`, `slug`, `active` or the timestamps,
+  which is the simplest possible defence against a client trying to set one.
+
+Two response shapes exist because a search page does not need 2000-character
+descriptions for records the user has not opened.
 
 ### API versioning
 

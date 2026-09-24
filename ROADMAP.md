@@ -9,7 +9,7 @@ state. Steps are built in order; nothing is implemented ahead of its step.
 | --- | --------------------- | ------- |
 | 1   | Foundation            | Monorepo, Spring Boot skeleton, React skeleton, PostgreSQL + Flyway config, CI workflow, docs. **Done.** |
 | 2   | Backend architecture  | Domain-oriented package structure, layering (controller to service to repository), shared kernel, error handling with correlation ids, profile strategy, JPA/Flyway configuration, API versioning, test tiers. **Done.** |
-| 3   | Database + Company    | `companies` table and migration, company domain module, company CRUD REST API, seed data, integration tests. |
+| 3   | Database + Company    | UUID/timestamp strategy, `V2__create_companies_table.sql`, company domain module (entity, repository, service, controller, DTOs), name normalization, slug generation, duplicate handling, search with pagination, dev seed data, unit/repository/controller tests. **Done.** |
 | 4   | Authentication + User | `users` table, registration and login, password hashing, JWT issuing and validation, Spring Security config, secured endpoints, user profile. |
 | 5   | Jobs                  | `jobs` table linked to companies, job domain module, job read/CRUD API, company-to-jobs relationship. |
 | 6   | Search / filtering    | Search companies and jobs by name, location, type and tags; pagination and sorting; sensible indexes. |

@@ -107,8 +107,55 @@ a stable `error` code and a `traceId` that also appears on the
 }
 ```
 
-Live today: `GET /api/v1/meta` (application name, version, environment) and
-`GET /actuator/health`. Business endpoints arrive with their roadmap steps.
+Live today: the Companies API below, plus `GET /api/v1/meta` (application name,
+version, environment) and `GET /actuator/health`.
+
+### Company domain
+
+Companies are the spine of the product: a scan resolves to a company, jobs
+belong to one, and tracking follows one. It is the first implemented domain
+module and the template the rest follow.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| `POST` | `/api/v1/companies` | Create a company |
+| `GET` | `/api/v1/companies?search=tata&page=0&size=20` | Search active companies |
+| `GET` | `/api/v1/companies/{id}` | Fetch by id |
+| `GET` | `/api/v1/companies/by-slug/{slug}` | Fetch by URL slug |
+| `PUT` | `/api/v1/companies/{id}` | Replace editable fields |
+
+```bash
+curl -X POST http://localhost:8080/api/v1/companies \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Tata Consultancy Services","industry":"Information Technology","location":"Pune, India"}'
+```
+
+```json
+{
+  "id": "0192f4a0-3b1c-7c4e-9f2a-1b8d6e4c5a10",
+  "slug": "tata-consultancy-services",
+  "name": "Tata Consultancy Services",
+  "industry": "Information Technology",
+  "location": "Pune, India",
+  "active": true,
+  "createdAt": "2026-09-24T10:15:30Z",
+  "updatedAt": "2026-09-24T10:15:30Z"
+}
+```
+
+Two identifiers, with different jobs: a **UUID** primary key that other
+resources reference, and a **slug** for readable URLs. Every company also
+carries a deterministically derived normalized name — `Tata Consultancy
+Services`, `TATA CONSULTANCY SERVICES` and `Tata  Consultancy  Services` all
+reduce to `tata consultancy services` — which is what makes search
+case-insensitive and stops the same company being created twice. Creating a
+duplicate returns `409`.
+
+There is no `DELETE`: jobs, tracking and scans will reference companies, and an
+`active` flag hides one from search without orphaning any of that.
+
+Full request/response examples, validation rules and status codes:
+[docs/api/companies.md](docs/api/companies.md).
 
 ## Repository structure
 

@@ -11,6 +11,11 @@ spring:
     username: ${DB_USERNAME:joblens}
     password: ${DB_PASSWORD:joblens}
 
+  flyway:
+    # Real migrations plus development-only seed data. The prod profile leaves
+    # db/seed out entirely, so seeded rows can never reach a real database.
+    locations: classpath:db/migration,classpath:db/seed
+
   jpa:
     # Statement logging is on in development only. It is noisy, it slows things
     # down, and query text can contain user data -- none of which belongs in a

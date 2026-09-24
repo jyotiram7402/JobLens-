@@ -82,11 +82,6 @@ awake (free services sleep, so retry once); does `curl` against the API work at
 all; does `CORS_ALLOWED_ORIGINS` on Render exactly match the Vercel origin
 (scheme included, no trailing slash).
 
-### Later steps
-
-Each step adds its own section here, listing the endpoints and UI behaviour
-that must work before the step is considered done.
-
 ### Step 2 — Backend architecture
 
 No new business endpoints, so the checks are about the machinery.
@@ -120,3 +115,63 @@ reaching the container and the service is running with development defaults.
 In CI: the backend job must now run three test classes, one of which
 (`JobLensApplicationTests`) proves the context loads with JPA and that Flyway
 migrated a real database.
+
+### Step 3 — Database + Company
+
+Migration first. In the Neon SQL editor:
+
+```sql
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+```
+Expect `V1` and `V2` both successful. `V9001` must **not** appear — that is
+dev-only seed data, and its presence means the service is running the dev
+profile against a production database.
+
+```sql
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'companies'
+ORDER BY ordinal_position;
+```
+Expect `id` as `uuid` — not `bytea` or `character varying`, which would mean the
+UUID mapping is wrong — and `created_at`/`updated_at` as
+`timestamp with time zone`.
+
+```sql
+SELECT indexname FROM pg_indexes WHERE tablename = 'companies';
+```
+Expect both `ux_companies_normalized_name` and `ux_companies_slug`.
+
+(`\d companies` works in `psql`, but not in a browser SQL editor, which only
+runs SQL.)
+
+Create, then create the same company differently cased:
+
+```bash
+curl -i -X POST <api>/api/v1/companies -H 'Content-Type: application/json' \
+  -d '{"name":"Tata Consultancy Services","industry":"Information Technology"}'
+```
+Expect `201`, a `Location` header, and `"slug": "tata-consultancy-services"`.
+
+```bash
+curl -i -X POST <api>/api/v1/companies -H 'Content-Type: application/json' \
+  -d '{"name":"TATA   CONSULTANCY   SERVICES"}'
+```
+Expect `409` and `"error": "COMPANY_ALREADY_EXISTS"`. This is the normalization
+and duplicate detection working end to end; if it returns `201`, they are not.
+
+```bash
+curl -i '<api>/api/v1/companies?search=TATA'
+curl -i '<api>/api/v1/companies?size=5000'
+curl -i <api>/api/v1/companies/not-a-uuid
+curl -i <api>/api/v1/companies/00000000-0000-0000-0000-000000000000
+```
+Expect: a match despite the casing; `400 VALIDATION_ERROR` for the page size;
+`400` for the malformed UUID; `404 COMPANY_NOT_FOUND` for the missing one.
+
+Check the response body of a fetch for fields that must **not** be there:
+`normalizedName` and `version`. Their presence means an entity is being
+serialised directly.
+
+In CI: the backend job now runs five more test classes, two of which need the
+PostgreSQL service container.
