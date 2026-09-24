@@ -24,7 +24,23 @@ public enum ErrorCode {
     // registered here rather than in each module so that this enum stays the
     // single list of everything the API can return.
     COMPANY_NOT_FOUND(HttpStatus.NOT_FOUND, "Company not found"),
-    COMPANY_ALREADY_EXISTS(HttpStatus.CONFLICT, "Company already exists");
+    COMPANY_ALREADY_EXISTS(HttpStatus.CONFLICT, "Company already exists"),
+
+    // Authentication and accounts.
+    //
+    // INVALID_CREDENTIALS covers a wrong email and a wrong password alike, on
+    // purpose: distinguishing them tells an attacker which addresses have
+    // accounts. ACCOUNT_INACTIVE is only ever returned after the password has
+    // already been verified, so it reveals nothing to someone who does not
+    // already know it.
+    EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT, "Email address is already registered"),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid email or password"),
+    ACCOUNT_INACTIVE(HttpStatus.FORBIDDEN, "This account is not active"),
+    UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Authentication is required"),
+    TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "The access token has expired"),
+    TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "The access token is not valid"),
+    ACCESS_DENIED(HttpStatus.FORBIDDEN, "You do not have access to this resource"),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found");
 
     private final HttpStatus status;
     private final String defaultMessage;

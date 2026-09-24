@@ -175,3 +175,88 @@ serialised directly.
 
 In CI: the backend job now runs five more test classes, two of which need the
 PostgreSQL service container.
+
+### Step 4 — Authentication + User profile
+
+**Set `JWT_SECRET` on Render before deploying** (`openssl rand -base64 48`).
+Without it the service will not start, by design — that is the first thing to
+check if the deploy fails at startup rather than at build.
+
+```sql
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+```
+Expect `V3` applied. Then confirm the tables exist:
+
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_name LIKE 'user%' ORDER BY table_name;
+```
+
+Register and log in:
+
+```bash
+curl -i -X POST <api>/api/v1/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"SecurePassword123!","firstName":"Jo","lastName":"Doe"}'
+```
+Expect `201`, a `user` object, and **no `accessToken`** — registration does not
+log you in. Check the body contains nothing password-shaped.
+
+```bash
+TOKEN=$(curl -s -X POST <api>/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"SecurePassword123!"}' \
+  | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+```
+
+```bash
+curl -i <api>/api/v1/users/me -H "Authorization: Bearer $TOKEN"
+```
+Expect `200` with `profile` present and `skills` an empty array.
+
+Now the negative cases, which matter more:
+
+```bash
+curl -i <api>/api/v1/users/me
+curl -i <api>/api/v1/users/me -H "Authorization: Bearer not.a.token"
+curl -i -X POST <api>/api/v1/companies -H 'Content-Type: application/json' -d '{"name":"X"}'
+```
+Expect `401 UNAUTHENTICATED`, `401 TOKEN_INVALID`, and `401` — company writes are
+protected now. Company **reads** must still work without a token:
+
+```bash
+curl -i '<api>/api/v1/companies?search=tata'
+```
+
+Account enumeration — these two must be byte-identical apart from `traceId`:
+
+```bash
+curl -s -X POST <api>/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"definitely wrong here"}'
+curl -s -X POST <api>/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"nobody@example.com","password":"definitely wrong here"}'
+```
+
+Profile, including deduplication:
+
+```bash
+curl -i -X PUT <api>/api/v1/users/me/profile -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"headline":"Software Engineer","yearsOfExperience":2,"remotePreference":"HYBRID","skills":["Java","java","Spring Boot"]}'
+```
+Expect `200` with **two** skills, not three.
+
+```bash
+curl -i -X PUT <api>/api/v1/users/me/profile -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"yearsOfExperience":-1}'
+```
+Expect `400` with `details.yearsOfExperience`.
+
+Finally, confirm no password ever reached the database in readable form:
+
+```sql
+SELECT email, left(password_hash, 8) AS hash_prefix FROM users;
+```
+Expect `{bcrypt}` as the prefix. If you see anything resembling a password,
+stop and tell me.
+
+In CI: three more test classes, one of which runs the full filter chain against
+the PostgreSQL service container.

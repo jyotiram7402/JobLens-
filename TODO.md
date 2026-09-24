@@ -100,6 +100,38 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] `docs/daily/README.md` index, so day numbers and step numbers stop being
       confused with each other
 
+### Step 4 - Authentication + User profile
+
+- [x] `V3__create_users_and_profile_tables.sql`: `users`, `user_profiles`,
+      `user_skills`, `user_preferred_roles`, `user_preferred_locations`
+- [x] `User` entity with a password *hash* only, and a `toString` that cannot
+      leak it
+- [x] `UserProfile` with the three preference collections as JPA element
+      collections, deduplicated by normalized form
+- [x] `Role` enum (`USER`, `ADMIN`) as a column, not a permissions framework
+- [x] `TextNormalizer` moved into `common` so `user` and `company` share one set
+      of rules — step 7 needs them to join
+- [x] `POST /auth/register` with validation, duplicate detection and an empty
+      profile created alongside the account
+- [x] `POST /auth/login` returning `accessToken`, `tokenType`, `expiresIn`, user
+- [x] Bcrypt via `DelegatingPasswordEncoder`; 72-byte password cap
+- [x] `JwtService`: issue, verify, minimal claims, issuer check, startup failure
+      on a secret under 256 bits
+- [x] `JwtAuthenticationFilter`, stateless, with no database read per request
+- [x] `SecurityConfig`: stateless sessions, CSRF off (header auth, no cookie),
+      default-deny authorization, company writes now authenticated
+- [x] `RestAuthenticationEntryPoint` / `RestAccessDeniedHandler` so 401 and 403
+      use the same `ApiError` shape as everything else
+- [x] CORS moved to a `CorsConfigurationSource` bean so Security applies it
+- [x] `GET /users/me`, `GET`/`PUT /users/me/profile` — no `userId` anywhere
+- [x] Login does not reveal whether email or password was wrong, and takes the
+      same time either way
+- [x] `JWT_SECRET` / `JWT_EXPIRATION` wired through `.env.example` and
+      `render.yaml`; no secret committed
+- [x] Tests: `JwtServiceTest`, `AuthServiceTest`,
+      `AuthAndProfileIntegrationTest`
+- [x] `docs/api/auth-and-users.md`
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -123,16 +155,22 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 4 - Authentication + User
+### Step 5 - Jobs
 
-- [ ] `V3__create_users_table.sql`
-- [ ] `User` entity, repository and service in the `user` module
-- [ ] Registration and login, with BCrypt password hashing
-- [ ] JWT issuing and validation; secret from the environment, never committed
-- [ ] Spring Security configuration and filter chain
-- [ ] Secure the company write endpoints (`POST`, `PUT`); keep reads public
-- [ ] `401` / `403` mapped into the existing `ApiError` shape
-- [ ] User profile endpoints
+- [ ] `V4__create_jobs_table.sql`, referencing `companies`
+- [ ] `Job` entity, repository and service in the `job` module
+- [ ] Job read endpoints, and a company-to-jobs relationship
+- [ ] Job write endpoints behind authentication
+
+### Deferred from Step 4
+
+- [ ] Email verification on registration (the reason registration issues no
+      token)
+- [ ] Refresh tokens, if a one-hour session proves too short in practice
+- [ ] Token revocation / denylist, so deactivating an account ends live sessions
+      rather than waiting for expiry
+- [ ] Rate limiting on `/auth/login` and `/auth/register`
+- [ ] `PATCH /users/me` for changing name, and a password-change endpoint
 
 ### Deferred from Step 3
 

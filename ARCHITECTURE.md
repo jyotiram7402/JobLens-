@@ -218,6 +218,7 @@ Migrations so far:
 | ------- | ------- |
 | `V1__baseline.sql` | Establishes Flyway ownership. No business tables. |
 | `V2__create_companies_table.sql` | The `companies` table, its constraints and indexes. |
+| `V3__create_users_and_profile_tables.sql` | `users`, `user_profiles`, and the three preference collections. |
 
 Each domain gets its own numbered migration in its own step. Applied migrations
 are never edited or renamed — a change means a new version.
@@ -336,6 +337,185 @@ Controllers return `CompanyResponse` and `CompanySummary`, never `Company`.
 
 Two response shapes exist because a search page does not need 2000-character
 descriptions for records the user has not opened.
+
+### Authentication
+
+Implemented in-house with Spring Security, JWT and bcrypt. No paid identity
+provider: authentication is a solved problem with well-understood primitives,
+and the free-first rule means not renting one.
+
+#### The flow
+
+```
+Registration                     Login
+────────────                     ─────
+POST /auth/register              POST /auth/login
+  validate                         look up by normalized email
+  normalize email                  verify password (bcrypt)
+  hash password (bcrypt)           check active flag
+  save user + empty profile        issue JWT
+  201, no token                    200 + accessToken
+
+Authenticated request
+─────────────────────
+Authorization: Bearer <jwt>
+  → JwtAuthenticationFilter: verify signature, issuer, expiry
+  → AuthenticatedUser(id, email, role) into the SecurityContext
+  → authorization
+  → controller reads the id from the context, never from the request
+```
+
+#### Registration does not issue a token
+
+The client logs in afterwards with credentials it already has. One way to
+obtain a token means one code path to audit; and email verification, the obvious
+next requirement, sits exactly where auto-login would be. Not issuing a token
+now means adding verification later does not have to take one away — which would
+be a breaking change for the frontend.
+
+#### Password hashing
+
+A `DelegatingPasswordEncoder`, which stores the algorithm inside the hash
+(`{bcrypt}$2a$10$...`). Moving to a stronger algorithm later is then a change of
+default plus a re-hash on next login, rather than invalidating every password in
+the database.
+
+The work factor is left at the library default. Bcrypt is deliberately slow —
+that is the point — and the free tier gives 0.1 CPU, so raising it would make
+login painful for a marginal gain. Worth revisiting on real hardware.
+
+Passwords are capped at 72 bytes because **bcrypt silently ignores everything
+past 72**. A longer password would be accepted while part of it did nothing, so
+a user could authenticate with a prefix of what they typed. The DTO limits
+characters; the service checks UTF-8 bytes, since non-ASCII costs more than one
+byte per character.
+
+#### JWT design
+
+```
+sub    user id
+email  so the principal can be built without a database read
+role   so authorization works without a database read
+iss    rejects correctly-signed tokens minted by something else
+iat    issued at
+exp    expiry
+```
+
+Nothing else. **A JWT is signed but not encrypted** — anyone holding it can read
+every claim — so it carries the minimum needed to authorize a request and no
+personal data beyond the email that identifies the account.
+
+The secret comes from `JWT_SECRET` and has no default in `application.yml` or
+the prod profile. A committed fallback is the classic way a JWT implementation
+becomes forgeable: every deployment that forgot the variable would share a
+secret that is also in public Git history. `JwtService` additionally refuses to
+start if the secret is under 256 bits, because HS256 needs that much to be
+meaningful. The dev and test profiles carry obviously-fake local values so that
+`mvn spring-boot:run` needs no setup; they are written to be unusable rather
+than plausible.
+
+#### Stateless, and what that costs
+
+Sessions are off entirely (`SessionCreationPolicy.STATELESS`). Identity comes
+from the token on every request, which is what lets the backend scale to zero
+and back without logging everyone out, and makes a second instance behave
+exactly like the first.
+
+Verifying a token touches no database. The principal is built from the claims.
+Every authenticated request would otherwise pay for a query before doing any
+work, which on 0.1 CPU is most of the request budget.
+
+The honest cost: **a token stays valid until it expires, so deactivating an
+account does not end a session already in progress.** The mitigation is the
+one-hour lifetime. Immediate revocation needs a denylist or a per-request
+lookup — a real feature with real infrastructure, not something to bolt on.
+
+There is no refresh token in V1. A one-hour access token and a login form is a
+complete story; refresh tokens bring rotation, reuse detection and revocation
+with them.
+
+#### CSRF is disabled, and that is correct here
+
+CSRF protection defends against a browser attaching credentials to a request the
+user did not intend. That requires *ambient* credentials — cookies or HTTP
+basic. This API authenticates with an `Authorization` header that a client must
+set deliberately, and a cross-site form post cannot set headers. With no session
+cookie there is nothing to ride on.
+
+This stops being true the moment a token goes into a cookie. That is the line to
+watch, not the annotation.
+
+#### Authorization
+
+Default deny: `anyRequest().authenticated()`. Public routes are listed one by
+one — the two auth endpoints, the health check, `/api/v1/meta`, and company
+*reads*. Company *writes* now require authentication, tightening what step 3
+left open. A new endpoint is protected until someone opens it deliberately,
+because forgetting to protect something is silent and forgetting to open
+something is immediately obvious.
+
+Errors from the filter chain never reach `@RestControllerAdvice` — Spring
+Security rejects those requests before any controller. So
+`RestAuthenticationEntryPoint` and `RestAccessDeniedHandler` render 401 and 403
+into the same `ApiError` shape, and a client only ever parses one error format.
+
+CORS is expressed as a `CorsConfigurationSource` bean rather than through
+`WebMvcConfigurer`, because Spring Security runs its own filter chain: a request
+it rejects never reaches Spring MVC, so MVC-level CORS settings would not be
+applied to a 401 and the browser would report an opaque CORS failure instead of
+showing the client a readable error.
+
+#### Not accepting a user id is the IDOR defence
+
+Every user route is `/api/v1/users/me/...`. There is no `/users/{id}`, and no
+request DTO has a `userId` field. The record being read or written is whichever
+one the verified token points at.
+
+This is deliberately structural rather than a check. A check can be forgotten on
+one endpoint; a field that does not exist cannot be supplied on any of them.
+
+### The User domain
+
+```
+users
+  └── user_profiles (1:1, ON DELETE CASCADE)
+        ├── user_skills
+        ├── user_preferred_roles
+        └── user_preferred_locations
+```
+
+Account and profile are separate because they change for different reasons and
+at different rates. An account is identity and credentials; a profile is career
+data that step 7 will match jobs against. Putting career fields on `users` would
+mean loading a password hash every time the matcher wants a skill list.
+
+A profile is created **with** the account, so every user always has one and no
+endpoint has to handle a missing profile or risk creating a second. The `UNIQUE`
+foreign key enforces one per user and `ON DELETE CASCADE` stops a profile
+outliving its user, so there is no orphan to clean up.
+
+The three preference tables are **element collections**, not entities. Each row
+is a value with no identity or lifecycle of its own: it exists because the
+profile says so and disappears with it. That gives cascade and orphan removal
+for free, and keeps three tables from needing three entity classes, three
+repositories and three sets of plumbing. Their primary key is
+`(profile_id, normalized_*)`, which is both the natural key and the dedup rule.
+
+Each value stores the text as typed plus a normalized form, produced by
+`TextNormalizer` — the same rules the company domain uses. That shared
+normalization is the point: a skill canonicalised one way here and another way
+in the job domain would not join when step 7 tries to match them. It is also
+what makes `Set` deduplication work, so adding `java` to a profile that already
+lists `Java` is not a second skill.
+
+No `@EntityGraph` fetches the three collections together: joining all of them in
+one query produces a cartesian product — 50 skills, 20 roles and 20 locations
+would return 20,000 rows for Hibernate to deduplicate in memory. Three extra
+small queries inside the same transaction is the cheaper end of that trade.
+
+Roles are a single column with two values, `USER` and `ADMIN`, and `ADMIN` is
+never granted by any code path. A role column beats a permissions framework
+until there is a second kind of user to justify one.
 
 ### API versioning
 

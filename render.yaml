@@ -45,6 +45,13 @@ services:
       # Set to the deployed frontend origin, e.g. https://joblens.vercel.app
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      # Generate with: openssl rand -base64 48
+      # Never commit this value. Changing it invalidates every issued token,
+      # which logs everyone out -- that is the emergency lever if it leaks.
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRATION
+        value: 1h
       - key: SPRING_PROFILES_ACTIVE
         value: prod
       - key: JOBLENS_ENVIRONMENT

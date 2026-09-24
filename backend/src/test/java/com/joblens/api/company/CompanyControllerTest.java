@@ -9,6 +9,9 @@ import com.joblens.api.company.exception.CompanyAlreadyExistsException;
 import com.joblens.api.company.exception.CompanyNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.joblens.api.security.JwtService;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
@@ -32,8 +35,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Web layer only: routing, validation, status codes and the error body. The
  * service is mocked, so these tests say nothing about business rules -- that is
  * {@code CompanyServiceTest}'s job -- and everything about the HTTP contract.
+ *
+ * <p>Security auto-configuration is excluded: the default Spring Security chain
+ * would answer every request with a 401 before the controller was reached.
+ * Access control is covered end to end by AuthAndProfileIntegrationTest, which
+ * runs the real filter chain.
  */
-@WebMvcTest(CompanyController.class)
+@WebMvcTest(value = CompanyController.class,
+        excludeAutoConfiguration = {SecurityAutoConfiguration.class, SecurityFilterAutoConfiguration.class})
 @ActiveProfiles("test")
 class CompanyControllerTest {
 
@@ -41,6 +50,14 @@ class CompanyControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    /**
+     * JwtAuthenticationFilter is a @Component Filter, so @WebMvcTest includes it
+     * in the slice and it needs this collaborator to be constructible. With no
+     * Authorization header present it does nothing.
+     */
+    @MockBean
+    private JwtService jwtService;
 
     @Autowired
     private ObjectMapper objectMapper;

@@ -84,6 +84,18 @@ management:
       enabled: false
 
 joblens:
+  jwt:
+    # JWT_SECRET has NO default in any profile, deliberately. A committed
+    # fallback would be shared by every deployment that forgot to set the
+    # variable, and it would also be readable in the Git history -- anyone
+    # could then mint a token for any user. A missing value must fail startup.
+    #
+    # Generate one with: openssl rand -base64 48
+    secret: ${JWT_SECRET}
+    # Short, because a stateless token cannot be revoked before it expires.
+    expiration: ${JWT_EXPIRATION:1h}
+    issuer: joblens-api
+
   version: ${APP_VERSION:0.1.0-SNAPSHOT}
   # Reported by /api/v1/meta so it is obvious which environment a client hit.
   environment: ${JOBLENS_ENVIRONMENT:local}

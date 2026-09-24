@@ -15,6 +15,12 @@ spring:
     show-sql: false
 
 joblens:
+  jwt:
+    # Test-only placeholder. Long enough to satisfy the 256-bit minimum that
+    # JwtService enforces at startup.
+    secret: test-only-insecure-jwt-secret-used-exclusively-by-the-test-suite
+    expiration: 1h
+
   environment: test
   cors:
     allowed-origins: http://localhost:5173

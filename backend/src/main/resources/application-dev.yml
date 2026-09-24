@@ -26,6 +26,14 @@ spring:
         format_sql: true
 
 joblens:
+  jwt:
+    # Local-only placeholder so `mvn spring-boot:run` needs no setup. It is
+    # committed, therefore public, therefore worthless as a secret -- which is
+    # exactly why it is written to be obviously unusable rather than to look
+    # plausible. The prod profile has no default at all and refuses to start
+    # without a real JWT_SECRET.
+    secret: ${JWT_SECRET:dev-only-insecure-jwt-secret-do-not-deploy-this-anywhere}
+
   environment: ${JOBLENS_ENVIRONMENT:dev}
   cors:
     # The Vite dev server.

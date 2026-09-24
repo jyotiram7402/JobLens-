@@ -157,6 +157,56 @@ There is no `DELETE`: jobs, tracking and scans will reference companies, and an
 Full request/response examples, validation rules and status codes:
 [docs/api/companies.md](docs/api/companies.md).
 
+### Authentication
+
+Implemented in-house with Spring Security, JWT and bcrypt — no paid identity
+provider.
+
+```
+POST /api/v1/auth/register   → 201, the new account (no token)
+POST /api/v1/auth/login      → 200, { accessToken, expiresIn, user }
+GET  /api/v1/users/me        → account + career profile   (Bearer token)
+GET  /api/v1/users/me/profile
+PUT  /api/v1/users/me/profile
+```
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"SecurePassword123!"}'
+```
+
+```bash
+curl http://localhost:8080/api/v1/users/me -H "Authorization: Bearer $TOKEN"
+```
+
+Authentication is **stateless**: no sessions, identity comes from the token on
+every request, and verifying one touches no database. Tokens are short-lived
+(one hour) precisely because a stateless token cannot be revoked before it
+expires. Registration deliberately does not log you in — call login next.
+
+Passwords are hashed with bcrypt through a `DelegatingPasswordEncoder`, so the
+algorithm can be upgraded later without invalidating anyone's password. A raw
+password exists only on the request DTO; it is never stored, returned or logged.
+
+Login never reveals whether the email or the password was wrong, and spends the
+same time on both cases so timing cannot reveal it either.
+
+### User profile
+
+Every account gets an empty career profile at registration. It holds a headline,
+summary, years of experience, current role, remote preference, and three
+collections — skills, preferred roles and preferred locations — which step 7
+will match jobs against. Entries are deduplicated by the same normalization the
+company domain uses, so `Java` and `java` are one skill.
+
+**Every route is `/users/me`.** There is no `/users/{id}` and no `userId` field
+in any request body: the profile being read or written is whichever one the
+verified token points at, so reaching another user's data is designed out rather
+than checked for.
+
+Full examples: [docs/api/auth-and-users.md](docs/api/auth-and-users.md).
+
 ## Repository structure
 
 ```
@@ -231,6 +281,8 @@ environment variables:
 | `DB_URL_PARAMS` | backend | Provider extras, e.g. `?sslmode=require`. |
 | `DB_POOL_SIZE` | backend | Default 10; lower it on a small free database. |
 | `PORT` / `SERVER_PORT` | backend | `PORT` is injected by the host; do not set it yourself. |
+| `JWT_SECRET` | backend | **Required.** HMAC signing key, at least 32 bytes — startup fails otherwise. Generate with `openssl rand -base64 48`. Never commit a real value. |
+| `JWT_EXPIRATION` | backend | Token lifetime, default `1h`. |
 | `CORS_ALLOWED_ORIGINS` | backend | Exact origins, comma-separated. Required on `prod`. |
 | `APP_VERSION` `LOG_LEVEL_JOBLENS` | backend | Optional. |
 | `VITE_API_BASE_URL` | frontend | Baked in at build time; public. |
