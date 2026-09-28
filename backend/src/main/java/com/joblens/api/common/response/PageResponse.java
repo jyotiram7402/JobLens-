@@ -9,8 +9,11 @@ import java.util.function.Function;
  * Envelope for paginated list endpoints.
  *
  * <p>Spring Data's own {@code Page} serialises to an unstable structure that
- * leaks internal fields, so every list endpoint returns this instead. Defining
- * it now means the first paginated endpoint does not invent its own shape.
+ * leaks internal fields, so every list endpoint returns this instead.
+ *
+ * <p>An empty result is a perfectly good response: {@code content} is an empty
+ * array, {@code totalElements} is zero, and the request was a success. No list
+ * endpoint returns 404 because nothing matched.
  *
  * @param content       the items on this page, already mapped to DTOs
  * @param page          zero-based page number
@@ -19,6 +22,8 @@ import java.util.function.Function;
  * @param totalPages    total number of pages
  * @param first         whether this is the first page
  * @param last          whether this is the last page
+ * @param hasNext       whether another page follows; the client's "load more"
+ * @param hasPrevious   whether a page precedes this one
  */
 public record PageResponse<T>(
         List<T> content,
@@ -27,7 +32,9 @@ public record PageResponse<T>(
         long totalElements,
         int totalPages,
         boolean first,
-        boolean last
+        boolean last,
+        boolean hasNext,
+        boolean hasPrevious
 ) {
 
     /**
@@ -43,6 +50,8 @@ public record PageResponse<T>(
                 page.getTotalElements(),
                 page.getTotalPages(),
                 page.isFirst(),
-                page.isLast());
+                page.isLast(),
+                page.hasNext(),
+                page.hasPrevious());
     }
 }

@@ -132,6 +132,40 @@ proof the code works. This made them a prerequisite, not a final step.
       `AuthAndProfileIntegrationTest`
 - [x] `docs/api/auth-and-users.md`
 
+### Step 5 - Jobs
+
+- [x] `V4__create_jobs_table.sql`, with `ON DELETE RESTRICT` to the company,
+      CHECK constraints on the enums and the experience range, and an index on
+      the foreign key
+- [x] `Job` entity with no public setters, `EmploymentType`, `WorkMode`
+- [x] `JobRepository`, `JobService`, `JobController`
+- [x] DTO records: create, update, `JobResponse`, `JobSummary`, `JobCompanyRef`
+- [x] Public reads, authenticated writes; `POST /{id}/close` rather than DELETE
+- [x] `normalized_title` stored for step 7 matching
+- [x] Dev-only seed data written to exercise search, not to look tidy
+
+### Step 6 - Job search and filtering
+
+- [x] `JobSearchCriteria` — ten optional filters in one value, with the
+      cross-field rules Bean Validation cannot express
+- [x] `JobSpecifications` — dynamic predicates, all filtering database-side
+- [x] Keyword search over title OR description, case-insensitive, with user
+      wildcards escaped
+- [x] Company, location, employment type, work mode, active and date filters
+- [x] Experience matching by range overlap; jobs with no stated experience are
+      never excluded
+- [x] `active=true` default; `active=false` requires authentication
+- [x] `JobSortParser` — allowlisted sort fields with `id` appended as a stable
+      tiebreaker
+- [x] Pagination capped at 50 per page
+- [x] N+1 prevented with `@EntityGraph` on the search query
+- [x] `PageResponse` gained `hasNext` / `hasPrevious`
+- [x] `V5__add_job_search_indexes.sql`, with the rejected indexes documented
+      and `pg_trgm` written down but not adopted
+- [x] Tests: repository search, sort parser, criteria validation, controller,
+      service
+- [x] `docs/api/jobs.md`
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -155,12 +189,24 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 5 - Jobs
+### Step 7 - Matching
 
-- [ ] `V4__create_jobs_table.sql`, referencing `companies`
-- [ ] `Job` entity, repository and service in the `job` module
-- [ ] Job read endpoints, and a company-to-jobs relationship
-- [ ] Job write endpoints behind authentication
+- [ ] Score a job against a user profile from skills, preferred roles,
+      preferred locations, remote preference and experience
+- [ ] Explainable output — why a job scored what it did, not just a number
+- [ ] Match score on job responses for an authenticated caller
+- [ ] Join on the normalized columns already stored by both sides
+
+### Deferred from Step 6
+
+- [ ] `pg_trgm` GIN indexes on title/description once job volume justifies them
+- [ ] Relevance ranking — currently results are ordered by date, not by how well
+      they match the keyword
+- [ ] Fuzzy matching, so `develper` finds something
+- [ ] Salary range on jobs, and filtering by it
+- [ ] Structured location (country/city) instead of free text
+- [ ] `GET /api/v1/companies/{id}/jobs` if the frontend wants it; `companyId`
+      on job search covers it for now
 
 ### Deferred from Step 4
 

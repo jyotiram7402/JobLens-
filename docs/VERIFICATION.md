@@ -260,3 +260,70 @@ stop and tell me.
 
 In CI: three more test classes, one of which runs the full filter chain against
 the PostgreSQL service container.
+
+### Steps 5 and 6 — Jobs, search and filtering
+
+```sql
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+```
+Expect `V4` and `V5` applied. `V9001`/`V9002` must **not** appear in production.
+
+```sql
+SELECT indexname FROM pg_indexes WHERE tablename = 'jobs';
+```
+Expect `ix_jobs_company_id` and `ix_jobs_active_posted_at`.
+
+Create a job (needs a token from step 4 and a company id from step 3):
+
+```bash
+curl -i -X POST <api>/api/v1/jobs -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"companyId":"<company-uuid>","title":"Java Backend Developer",
+       "description":"Build REST services.","location":"Pune, Maharashtra, India",
+       "employmentType":"FULL_TIME","workMode":"HYBRID","experienceMin":2,"experienceMax":5}'
+```
+Expect `201` with a `Location` header and a nested `company` object.
+
+Now the search. Each of these should behave as described:
+
+```bash
+curl -s '<api>/api/v1/jobs'                                   # active only, newest first
+curl -s '<api>/api/v1/jobs?search=JAVA'                       # case-insensitive
+curl -s '<api>/api/v1/jobs?location=pune'                     # substring match
+curl -s '<api>/api/v1/jobs?workMode=REMOTE'
+curl -s '<api>/api/v1/jobs?search=java&location=Pune&workMode=HYBRID'
+curl -s '<api>/api/v1/jobs?experienceMin=2'
+curl -s '<api>/api/v1/jobs?sort=title,asc&size=3'
+curl -s '<api>/api/v1/jobs?search=cobol'                      # 200 with empty content
+```
+
+The last one matters: an unmatched search is a **200 with `"content": []`**, not
+a 404. And every response must carry `hasNext` / `hasPrevious`.
+
+Rejections — each should be a `400` except the last, which is a `401`:
+
+```bash
+curl -i '<api>/api/v1/jobs?employmentType=PERMANENT'
+curl -i '<api>/api/v1/jobs?size=1000000'
+curl -i '<api>/api/v1/jobs?sort=salary,desc'
+curl -i '<api>/api/v1/jobs?experienceMin=5&experienceMax=2'
+curl -i '<api>/api/v1/jobs?companyId=not-a-uuid'
+curl -i '<api>/api/v1/jobs?active=false'
+```
+
+**The N+1 check.** Run locally with the dev profile (`show-sql: true`), request
+a page of jobs from several different companies, and read the SQL log. Expect
+**one** select for the page plus **one** count. A select per result row means
+the `@EntityGraph` is not being applied — that is the single most likely defect
+in this step.
+
+Locally, confirm the index is used once there is data:
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM jobs WHERE active = true ORDER BY posted_at DESC, id LIMIT 20;
+```
+On a nearly empty table a sequential scan is correct and not a failure.
+
+In CI: five more test classes, one of which exercises the whole search against
+the PostgreSQL service container.

@@ -4,6 +4,8 @@ import org.springframework.util.Assert;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.Optional;
+
 /**
  * Reads the authenticated principal out of the security context.
  *
@@ -30,5 +32,22 @@ public final class CurrentUser {
                 "No authenticated user in the security context. "
                         + "This endpoint should be behind authentication.");
         return (AuthenticatedUser) authentication.getPrincipal();
+    }
+
+    /**
+     * The authenticated principal, if there is one.
+     *
+     * <p>For endpoints that are public but behave differently for a signed-in
+     * caller -- job search showing withdrawn positions, for instance. Returns
+     * empty rather than throwing, because on those endpoints being anonymous is
+     * a normal state and not a configuration bug.
+     */
+    public static Optional<AuthenticatedUser> optional() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof AuthenticatedUser principal)) {
+            return Optional.empty();
+        }
+        return Optional.of(principal);
     }
 }

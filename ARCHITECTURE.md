@@ -219,6 +219,8 @@ Migrations so far:
 | `V1__baseline.sql` | Establishes Flyway ownership. No business tables. |
 | `V2__create_companies_table.sql` | The `companies` table, its constraints and indexes. |
 | `V3__create_users_and_profile_tables.sql` | `users`, `user_profiles`, and the three preference collections. |
+| `V4__create_jobs_table.sql` | The `jobs` table, its constraints and its foreign key index. |
+| `V5__add_job_search_indexes.sql` | The composite index serving the default job search. |
 
 Each domain gets its own numbered migration in its own step. Applied migrations
 are never edited or renamed — a change means a new version.
@@ -516,6 +518,152 @@ small queries inside the same transaction is the cheaper end of that trade.
 Roles are a single column with two values, `USER` and `ADMIN`, and `ADMIN` is
 never granted by any code path. A role column beats a permissions framework
 until there is a second kind of user to justify one.
+
+### The Job domain and job search
+
+Jobs belong to a company and are the thing the product ultimately delivers.
+Search over them is the most-used read path in JobLens, so it is worth being
+explicit about how it works.
+
+#### Why PostgreSQL is enough for V1
+
+No Elasticsearch, no OpenSearch, no hosted search API. A search engine is a
+second datastore to deploy, keep in sync, and pay for — and it earns that cost
+when you need relevance ranking, fuzzy matching or millions of documents. V1
+needs exact-ish substring matching over a few thousand rows, which PostgreSQL
+does in milliseconds.
+
+Adding one now would also mean the canonical data lives in Postgres while
+search reads from a copy, and every write needs an indexing step that can fail.
+That is a real distributed-systems problem taken on for no current benefit.
+
+The honest limit: there is no relevance ranking and no fuzzy matching, so
+`develper` finds nothing. When that stops being acceptable, PostgreSQL's own
+full-text search (`tsvector` + GIN) is the next step, and a separate engine the
+one after.
+
+#### Filter architecture
+
+```
+JobController            binds and validates request parameters
+      │                  builds Pageable via JobSortParser (allowlist)
+      ▼
+JobSearchCriteria        one value holding every filter; null = don't filter
+      │                  validate() covers the cross-field rules
+      ▼
+JobSpecifications        criteria -> JPA predicates
+      │
+      ▼
+JobRepository            JpaSpecificationExecutor + @EntityGraph
+      │
+      ▼
+PostgreSQL               filters, sorts and pages
+```
+
+`Specification` is used because there are ten optional filters. The alternative
+— one JPQL query with `(:param IS NULL OR column = :param)` repeated ten times —
+works, but it is unreadable at this size and makes PostgreSQL plan conditions
+the caller did not ask for. Specifications are also just Spring Data: no query
+framework of our own, and each filter is a five-line function.
+
+A criteria record exists for the same reason: a repository method with ten
+parameters cannot be called correctly, and grows another parameter with every
+filter added.
+
+Boolean structure is deliberate and stated in one place:
+
+```
+search AND companyId AND location AND employmentType AND workMode
+       AND experience AND active AND dates
+
+search itself:  title LIKE %term%  OR  description LIKE %term%
+```
+
+Each filter narrows, so they AND; the keyword ORs across two columns because
+they are two places the same word appears.
+
+#### Everything happens in the database
+
+No code path loads jobs to filter them in Java. Predicates become SQL, `LIMIT`
+and `OFFSET` are applied by PostgreSQL, and `totalElements` comes from a count
+query — not from the size of a list we fetched.
+
+Case-insensitivity is `LOWER(column) LIKE LOWER(pattern)`, which is portable and
+obvious. User-supplied `%` and `_` are escaped, so a search term cannot act as a
+wildcard or force pathological backtracking. (Company search does not need this
+because its terms pass through normalization, which strips those characters
+entirely; job search matches raw text and must escape explicitly.)
+
+#### Experience overlap
+
+Both the job and the query describe a range, either end of which may be open,
+and a job matches when the ranges overlap:
+
+```
+match iff  (jobMin ?? 0) ≤ (searchMax ?? ∞)  AND  (jobMax ?? ∞) ≥ (searchMin ?? 0)
+```
+
+Each predicate is written as "unspecified OR within bound", so **a job with no
+stated experience is never filtered out**. An employer who left it blank has not
+said "zero years"; treating null as 0 would quietly drop those jobs from every
+experience-filtered search — the class of bug where users decide search is
+broken but cannot say why.
+
+#### Pagination and sorting
+
+`Pageable`, built in the controller rather than bound automatically. Page size
+defaults to 20 and is capped at 50: without a ceiling, `?size=1000000` is a free
+denial-of-service against a 512 MB container.
+
+Sort fields are an allowlist (`postedAt`, `createdAt`, `title`). Letting a
+client sort by any mapped property means sorting by unindexed columns and
+turning a typo into a `PropertyReferenceException` and a 500.
+
+Sorting is always stabilised with `id` as a tiebreaker. Without one, two jobs
+posted in the same second can swap places between page 1 and page 2, so a row
+appears twice and another is never seen — invisible with tidy test data,
+obvious in production.
+
+Default order is newest first: a stale opening is worse than a less relevant
+one, and there is no relevance score to sort by yet.
+
+#### N+1 prevention
+
+Every result row shows its company's name and slug, and `Job.company` is
+`LAZY` — so one query for a page of 20 jobs would be followed by up to 20 more.
+
+The fix is a re-declared `findAll(Specification, Pageable)` on the repository
+carrying `@EntityGraph(attributePaths = "company")`, which fetch-joins the
+company in the same query. This is safe **because the association is
+to-one**: fetch joining a *collection* alongside pagination forces Hibernate to
+load every row and paginate in memory. A to-one join multiplies no rows, so
+`LIMIT`/`OFFSET` still work in SQL.
+
+Rejected alternatives: making the association `EAGER`, which would drag a
+company into every query touching a job whether or not anyone wanted it; and a
+DTO projection, which is faster still but adds a second mapping to keep in step
+with the entity.
+
+#### Indexes
+
+| Index | Why |
+| ----- | --- |
+| `ix_jobs_company_id` | PostgreSQL does not index a foreign key automatically. Serves the `companyId` filter and referential checks. |
+| `ix_jobs_active_posted_at (active, posted_at DESC, id)` | Serves the default query — active jobs, newest first — so the database finds rows already in order and stops after one page. Equality column first, ordering column second; reversed it would not serve the filter. |
+
+Deliberately **not** indexed:
+
+- `employment_type`, `work_mode` — six and three values. An index whose every
+  entry matches a large slice of the table cannot narrow enough to beat a scan;
+  the planner will usually ignore it while writes still pay to maintain it.
+- `title`, `description`, `location` — search is `LOWER(col) LIKE '%term%'`, and
+  a B-tree can serve neither a leading wildcard nor `LOWER(col)`. A plain index
+  would be pure overhead. Making these fast needs trigram indexing
+  (`CREATE EXTENSION pg_trgm` + a GIN index), which is written down in
+  `V5__add_job_search_indexes.sql` but not done: it needs an extension a managed
+  free tier may not allow, it costs real write time and disk, and at V1 volumes
+  the sequential scan is measured in milliseconds. When that stops being true it
+  is a migration, not a rewrite.
 
 ### API versioning
 

@@ -157,6 +157,44 @@ There is no `DELETE`: jobs, tracking and scans will reference companies, and an
 Full request/response examples, validation rules and status codes:
 [docs/api/companies.md](docs/api/companies.md).
 
+### Job search
+
+The main read path: openings belonging to a company, filtered ten ways and
+paged by PostgreSQL.
+
+```
+GET  /api/v1/jobs?search=java&location=Pune&workMode=HYBRID&page=0&size=20
+GET  /api/v1/jobs/{id}
+POST /api/v1/jobs                    (Bearer token)
+PUT  /api/v1/jobs/{id}               (Bearer token)
+POST /api/v1/jobs/{id}/close         (Bearer token)
+```
+
+| Filter | Behaviour |
+| ------ | --------- |
+| `search` | Case-insensitive substring of **title OR description** |
+| `companyId` | Exact |
+| `location` | Case-insensitive substring — `Pune` matches `Pune, Maharashtra, India` and `Hybrid - Pune` |
+| `employmentType` / `workMode` | Exact enum; an unknown value is a `400`, never ignored |
+| `experienceMin` / `experienceMax` | Range **overlap**; jobs with no stated experience are never excluded |
+| `postedAfter` / `postedBefore` | Inclusive ISO-8601 instants |
+| `active` | Defaults to `true`; anything else needs a token |
+
+Filters combine with AND; the keyword ORs across the two columns. Paging is
+`page`/`size` (default 20, max 50), sorting is an allowlist of `postedAt`,
+`createdAt` and `title` with `postedAt,desc` as the default. An empty result is
+a `200` with an empty array, never a `404`.
+
+```bash
+curl '<api>/api/v1/jobs?search=spring&workMode=HYBRID&employmentType=FULL_TIME'
+```
+
+No Elasticsearch and no search service: PostgreSQL does substring matching over
+V1 volumes in milliseconds, and a second datastore to deploy and keep in sync
+earns its cost only once relevance ranking or fuzzy matching is needed.
+
+Full parameter reference and examples: [docs/api/jobs.md](docs/api/jobs.md).
+
 ### Authentication
 
 Implemented in-house with Spring Security, JWT and bcrypt — no paid identity

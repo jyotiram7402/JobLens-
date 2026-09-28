@@ -98,8 +98,15 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/meta").permitAll()
 
-                        // Company discovery is public; changing a company is not.
+                        // Discovery is public; changing things is not. Someone
+                        // should be able to browse companies and openings
+                        // before deciding whether to sign up.
+                        //
+                        // Job search additionally narrows itself for anonymous
+                        // callers: JobController requires a token before it
+                        // will list withdrawn positions.
                         .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/companies/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/jobs/**").permitAll()
 
                         .anyRequest().authenticated())
 

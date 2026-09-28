@@ -11,6 +11,7 @@ afterwards would break every link that already points at them.
 | [03](day-03.md) | 2026-09-22 | 2 | Spring Boot backend architecture |
 | [04](day-04.md) | 2026-09-24 | 3 | Database foundation and the Company domain |
 | [05](day-05.md) | 2026-09-24 | 4 | Authentication, JWT and the user career profile |
+| [06](day-06.md) | 2026-09-24 | 5 + 6 | The Job domain, and job search with filtering |
 
 Roadmap steps live in [../../ROADMAP.md](../../ROADMAP.md); the current
 checklist is [../../TODO.md](../../TODO.md).

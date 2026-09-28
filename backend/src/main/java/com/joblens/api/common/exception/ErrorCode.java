@@ -25,6 +25,7 @@ public enum ErrorCode {
     // single list of everything the API can return.
     COMPANY_NOT_FOUND(HttpStatus.NOT_FOUND, "Company not found"),
     COMPANY_ALREADY_EXISTS(HttpStatus.CONFLICT, "Company already exists"),
+    JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "Job not found"),
 
     // Authentication and accounts.
     //
