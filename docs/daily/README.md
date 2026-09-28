@@ -12,6 +12,7 @@ afterwards would break every link that already points at them.
 | [04](day-04.md) | 2026-09-24 | 3 | Database foundation and the Company domain |
 | [05](day-05.md) | 2026-09-24 | 4 | Authentication, JWT and the user career profile |
 | [06](day-06.md) | 2026-09-24 | 5 + 6 | The Job domain, and job search with filtering |
+| [07](day-07.md) | 2026-09-28 | 7 | The job matching engine |
 
 Roadmap steps live in [../../ROADMAP.md](../../ROADMAP.md); the current
 checklist is [../../TODO.md](../../TODO.md).

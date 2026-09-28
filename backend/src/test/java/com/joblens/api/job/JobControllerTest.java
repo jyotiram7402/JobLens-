@@ -239,7 +239,7 @@ class JobControllerTest {
     @Test
     void createRejectsMissingRequiredFields() throws Exception {
         CreateJobRequest invalid = new CreateJobRequest(null, "  ", null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
 
         mockMvc.perform(post(BASE)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -257,7 +257,7 @@ class JobControllerTest {
         when(jobService.create(any())).thenThrow(CompanyNotFoundException.withId(companyId));
 
         CreateJobRequest request = new CreateJobRequest(companyId, "Java Backend Developer",
-                null, "Pune", EmploymentType.FULL_TIME, WorkMode.HYBRID, 2, 5, null, null);
+                null, "Pune", EmploymentType.FULL_TIME, WorkMode.HYBRID, 2, 5, null, null, null);
 
         mockMvc.perform(post(BASE)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -270,7 +270,7 @@ class JobControllerTest {
     void createRejectsNonHttpApplyUrl() throws Exception {
         CreateJobRequest request = new CreateJobRequest(UUID.randomUUID(), "Developer",
                 null, null, EmploymentType.FULL_TIME, WorkMode.REMOTE, null, null,
-                "javascript:alert(1)", null);
+                "javascript:alert(1)", null, null);
 
         mockMvc.perform(post(BASE)
                         .contentType(MediaType.APPLICATION_JSON)

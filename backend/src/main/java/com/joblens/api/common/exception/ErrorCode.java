@@ -27,6 +27,11 @@ public enum ErrorCode {
     COMPANY_ALREADY_EXISTS(HttpStatus.CONFLICT, "Company already exists"),
     JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "Job not found"),
 
+    // 422 rather than 400: the request itself is perfectly well formed, but the
+    // user's stored profile has nothing to match on. Nothing about the request
+    // can be fixed; the profile has to be filled in.
+    PROFILE_NOT_READY(HttpStatus.UNPROCESSABLE_ENTITY, "Your profile does not have enough information yet"),
+
     // Authentication and accounts.
     //
     // INVALID_CREDENTIALS covers a wrong email and a wrong password alike, on

@@ -2,6 +2,7 @@ package com.joblens.api.user.domain;
 
 import com.joblens.api.common.domain.BaseEntity;
 import com.joblens.api.common.domain.NormalizedText;
+import com.joblens.api.skill.domain.Skill;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.CollectionTable;
@@ -12,6 +13,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
@@ -74,13 +77,21 @@ public class UserProfile extends BaseEntity {
     @Column(name = "remote_preference", nullable = false, length = 20)
     private RemotePreference remotePreference = RemotePreference.ANY;
 
-    @ElementCollection(fetch = FetchType.LAZY)
-    @CollectionTable(name = "user_skills", joinColumns = @JoinColumn(name = "profile_id"))
-    @AttributeOverrides({
-            @AttributeOverride(name = "value", column = @Column(name = "name", nullable = false, length = 80)),
-            @AttributeOverride(name = "normalizedValue", column = @Column(name = "normalized_name", nullable = false, length = 80))
-    })
-    private Set<NormalizedText> skills = new LinkedHashSet<>();
+    /**
+     * Skills point at the shared vocabulary rather than being private text.
+     *
+     * <p>They changed shape in step 7. Preferred roles and locations below did
+     * not, and the difference is the point: a skill is a thing jobs also
+     * reference, so matching compares identity. A preferred role or location is
+     * one person's wording of a preference with no counterpart table, so it
+     * stays a value collection.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "user_profile_skills",
+            joinColumns = @JoinColumn(name = "profile_id"),
+            inverseJoinColumns = @JoinColumn(name = "skill_id"))
+    private Set<Skill> skills = new LinkedHashSet<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "user_preferred_roles", joinColumns = @JoinColumn(name = "profile_id"))
@@ -125,7 +136,7 @@ public class UserProfile extends BaseEntity {
      */
     public void update(String headline, String summary, Integer yearsOfExperience,
                        String currentJobTitle, RemotePreference remotePreference,
-                       Collection<String> skills, Collection<String> preferredRoles,
+                       Collection<Skill> skills, Collection<String> preferredRoles,
                        Collection<String> preferredLocations) {
         this.headline = headline;
         this.summary = summary;
@@ -133,7 +144,14 @@ public class UserProfile extends BaseEntity {
         this.currentJobTitle = currentJobTitle;
         this.remotePreference = remotePreference == null ? RemotePreference.ANY : remotePreference;
 
-        replace(this.skills, skills);
+        // Skills arrive already resolved to shared rows. The entity cannot do
+        // that resolution itself -- it would need a repository -- so the
+        // service does it and hands over real Skill instances.
+        this.skills.clear();
+        if (skills != null) {
+            this.skills.addAll(skills);
+        }
+
         replace(this.preferredRoles, preferredRoles);
         replace(this.preferredLocations, preferredLocations);
     }
@@ -177,8 +195,17 @@ public class UserProfile extends BaseEntity {
         return remotePreference;
     }
 
+    /** Display names, for the API. Matching uses {@link #getSkillEntities()}. */
     public List<String> getSkills() {
-        return valuesOf(skills);
+        return skills.stream().map(Skill::getName).toList();
+    }
+
+    /**
+     * The shared skill rows, for matching, which compares identity rather than
+     * text.
+     */
+    public Set<Skill> getSkillEntities() {
+        return java.util.Collections.unmodifiableSet(skills);
     }
 
     public List<String> getPreferredRoles() {

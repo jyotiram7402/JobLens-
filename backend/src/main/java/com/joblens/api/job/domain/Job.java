@@ -3,8 +3,11 @@ package com.joblens.api.job.domain;
 import com.joblens.api.common.domain.BaseEntity;
 import com.joblens.api.common.text.TextNormalizer;
 import com.joblens.api.company.domain.Company;
+import com.joblens.api.skill.domain.Skill;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -13,6 +16,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * A public job opening belonging to a company.
@@ -71,6 +77,23 @@ public class Job extends BaseEntity {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    /**
+     * The skills this opening asks for. All are treated as required in V1;
+     * a nice-to-have distinction would need a column on the join table and a
+     * scoring rule to go with it, and nothing has asked for one yet.
+     *
+     * <p>{ LAZY}, because most reads of a job -- search results, the list
+     * page -- do not need them. Matching does, and loads them deliberately:
+     * one job through an entity graph, many through a single projection query.
+     * See { JobRepository}.
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "job_skills",
+            joinColumns = @JoinColumn(name = "job_id"),
+            inverseJoinColumns = @JoinColumn(name = "skill_id"))
+    private Set<Skill> skills = new LinkedHashSet<>();
+
     /** For JPA only. */
     protected Job() {
     }
@@ -128,6 +151,20 @@ public class Job extends BaseEntity {
         this.postedAt = postedAt;
     }
 
+    /**
+     * Replaces the skills this opening asks for.
+     *
+     * <p>The collection is mutated rather than reassigned: Hibernate tracks the
+     * instance it handed us, and swapping in a fresh Set detaches that tracking
+     * and throws on flush.
+     */
+    public void replaceSkills(Collection<Skill> replacement) {
+        this.skills.clear();
+        if (replacement != null) {
+            this.skills.addAll(replacement);
+        }
+    }
+
     /** Hides the opening from search without deleting anything. */
     public void close() {
         this.active = false;
@@ -183,5 +220,10 @@ public class Job extends BaseEntity {
 
     public boolean isActive() {
         return active;
+    }
+
+    /** Unmodifiable: callers change skills through replaceSkills. */
+    public Set<Skill> getSkills() {
+        return java.util.Collections.unmodifiableSet(skills);
     }
 }

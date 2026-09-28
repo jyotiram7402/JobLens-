@@ -106,6 +106,16 @@ public class SecurityConfig {
                         // callers: JobController requires a token before it
                         // will list withdrawn positions.
                         .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/companies/**").permitAll()
+
+                        // These two MUST come before the jobs wildcard below.
+                        // Rules are evaluated in order and the first match wins,
+                        // so listing them afterwards would make a user's match
+                        // results an anonymous read. There is a test for it.
+                        .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/jobs/recommended")
+                            .authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/jobs/*/match")
+                            .authenticated()
+
                         .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/jobs/**").permitAll()
 
                         .anyRequest().authenticated())

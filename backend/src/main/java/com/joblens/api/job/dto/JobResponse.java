@@ -3,8 +3,10 @@ package com.joblens.api.job.dto;
 import com.joblens.api.job.domain.EmploymentType;
 import com.joblens.api.job.domain.Job;
 import com.joblens.api.job.domain.WorkMode;
+import com.joblens.api.skill.domain.Skill;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,6 +27,8 @@ public record JobResponse(
         Integer experienceMin,
         Integer experienceMax,
         String applyUrl,
+        /** Display names of the skills this opening asks for. */
+        List<String> skills,
         Instant postedAt,
         boolean active,
         Instant createdAt,
@@ -43,6 +47,7 @@ public record JobResponse(
                 job.getExperienceMin(),
                 job.getExperienceMax(),
                 job.getApplyUrl(),
+                job.getSkills().stream().map(Skill::getName).toList(),
                 job.getPostedAt(),
                 job.isActive(),
                 job.getCreatedAt(),

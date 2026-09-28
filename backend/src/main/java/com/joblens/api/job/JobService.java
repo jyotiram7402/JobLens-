@@ -10,6 +10,7 @@ import com.joblens.api.job.dto.JobResponse;
 import com.joblens.api.job.dto.JobSummary;
 import com.joblens.api.job.dto.UpdateJobRequest;
 import com.joblens.api.job.exception.JobNotFoundException;
+import com.joblens.api.skill.SkillService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -44,9 +45,14 @@ public class JobService {
      */
     private final CompanyRepository companyRepository;
 
-    public JobService(JobRepository jobRepository, CompanyRepository companyRepository) {
+    /** Resolves skill names to shared rows, creating any that are new. */
+    private final SkillService skillService;
+
+    public JobService(JobRepository jobRepository, CompanyRepository companyRepository,
+                      SkillService skillService) {
         this.jobRepository = jobRepository;
         this.companyRepository = companyRepository;
+        this.skillService = skillService;
     }
 
     /**
@@ -69,6 +75,8 @@ public class JobService {
                 trimToNull(request.applyUrl()),
                 request.postedAt() == null ? Instant.now() : request.postedAt());
 
+        job.replaceSkills(skillService.resolveAll(request.skills()));
+
         Job saved = jobRepository.saveAndFlush(job);
         log.info("Created job {} for company {}", saved.getId(), company.getId());
         return JobResponse.from(saved);
@@ -79,7 +87,11 @@ public class JobService {
      */
     @Transactional(readOnly = true)
     public JobResponse getById(UUID id) {
-        return JobResponse.from(findWithCompany(id));
+        // Skills are part of the detail response, so they are fetched with the
+        // job rather than lazily loaded during mapping.
+        Job job = jobRepository.findWithCompanyAndSkillsById(id)
+                .orElseThrow(() -> new JobNotFoundException(id));
+        return JobResponse.from(job);
     }
 
     /**
@@ -103,7 +115,8 @@ public class JobService {
      */
     @Transactional
     public JobResponse update(UUID id, UpdateJobRequest request) {
-        Job job = findWithCompany(id);
+        Job job = jobRepository.findWithCompanyAndSkillsById(id)
+                .orElseThrow(() -> new JobNotFoundException(id));
 
         job.updateDetails(
                 request.title().trim(),
@@ -115,6 +128,8 @@ public class JobService {
                 request.experienceMax(),
                 trimToNull(request.applyUrl()),
                 request.postedAt() == null ? job.getPostedAt() : request.postedAt());
+
+        job.replaceSkills(skillService.resolveAll(request.skills()));
 
         log.info("Updated job {}", id);
         return JobResponse.from(job);
@@ -131,15 +146,13 @@ public class JobService {
      */
     @Transactional
     public JobResponse close(UUID id) {
-        Job job = findWithCompany(id);
+        // The skills variant, because the response includes them and a lazy
+        // load here would be an avoidable extra query.
+        Job job = jobRepository.findWithCompanyAndSkillsById(id)
+                .orElseThrow(() -> new JobNotFoundException(id));
         job.close();
         log.info("Closed job {}", id);
         return JobResponse.from(job);
-    }
-
-    private Job findWithCompany(UUID id) {
-        return jobRepository.findWithCompanyById(id)
-                .orElseThrow(() -> new JobNotFoundException(id));
     }
 
     private static String trimToNull(String value) {

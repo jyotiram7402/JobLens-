@@ -157,6 +157,56 @@ There is no `DELETE`: jobs, tracking and scans will reference companies, and an
 Full request/response examples, validation rules and status codes:
 [docs/api/companies.md](docs/api/companies.md).
 
+### Job matching
+
+Every job can be scored against your career profile, and the score always comes
+with its reasons.
+
+```
+GET /api/v1/jobs/{jobId}/match      (Bearer token)
+GET /api/v1/jobs/recommended        (Bearer token)
+```
+
+| Criterion | Weight | Compares |
+| --------- | -----: | -------- |
+| Skills | 50 | Your skills against the skills the job asks for |
+| Experience | 20 | Your years against the job's range |
+| Location | 15 | Your preferred locations against the job's |
+| Role | 10 | Your preferred titles against the job's title |
+| Work mode | 5 | Your remote preference against the job's work mode |
+
+```json
+{
+  "score": 88,
+  "breakdown": {
+    "skills": { "score": 38, "maxScore": 50,
+                "matchedSkills": ["Java", "Spring Boot", "Docker"],
+                "missingSkills": ["PostgreSQL"] }
+  },
+  "explanation": [
+    "This job scores 88 out of 100, based on 5 of the 5 things JobLens compares.",
+    "You have Java, Spring Boot and Docker, which this job asks for.",
+    "The one skill gap is PostgreSQL."
+  ]
+}
+```
+
+**Deterministic and explainable — no AI.** Every rule is arithmetic you can read
+and disagree with. A model would rank better on average and could not tell you
+why, and "why did this job score 72?" is the question JobLens exists to answer.
+
+**Missing data does not count against you.** A criterion that cannot be judged
+is excluded from the total along with its weight, rather than scored zero. If
+you have not said how you want to work, you are scored out of 95 rather than
+losing five points for a question you did not answer. If nothing can be judged
+at all, the answer is "not enough information" rather than a score of 0.
+
+Skills are a shared vocabulary that both profiles and jobs point at, so a job's
+"Spring Boot" and your "spring boot" are the same thing rather than two strings
+that happen to look alike.
+
+Full rules, weights and examples: [docs/api/matching.md](docs/api/matching.md).
+
 ### Job search
 
 The main read path: openings belonging to a company, filtered ten ways and

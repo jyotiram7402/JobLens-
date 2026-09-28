@@ -6,8 +6,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -52,8 +56,58 @@ public interface JobRepository extends JpaRepository<Job, UUID>, JpaSpecificatio
     Optional<Job> findWithCompanyById(UUID id);
 
     /**
+     * A single job with both its company and its skills, for the match endpoint.
+     *
+     * <p>Two collections would be a cartesian product, but company is to-one,
+     * so this is one to-one join plus one collection -- which Hibernate handles
+     * in a single query without multiplying rows unmanageably. For one job that
+     * is the right trade; for a page of them, see {@link #findSkillsForJobs}.
+     */
+    @EntityGraph(attributePaths = {"company", "skills"})
+    Optional<Job> findWithCompanyAndSkillsById(UUID id);
+
+    /**
+     * The most recent active openings, with their companies fetched.
+     *
+     * <p>For the matching module, which needs a bounded candidate set without
+     * reaching into this package's Specification internals. A derived query is
+     * enough here -- there is exactly one filter -- and it keeps the module
+     * boundary intact: matching depends on this interface, not on how search
+     * happens to be built.
+     */
+    @EntityGraph(attributePaths = "company")
+    Page<Job> findByActiveTrue(Pageable pageable);
+
+    /**
+     * The skills of many jobs, in one query.
+     *
+     * <p>This is the N+1 fix for recommendations. Scoring 200 candidate jobs
+     * needs every job's skills; letting the lazy collection load per job would
+     * be 200 extra queries, and fetch-joining the collection across a paged
+     * query would multiply rows and force Hibernate to paginate in memory.
+     *
+     * <p>A flat projection sidesteps both: one query returns every (job, skill)
+     * pair for the candidate set, and the service groups them by job id.
+     */
+    @Query("""
+            SELECT j.id AS jobId, s.normalizedName AS normalizedName, s.name AS name
+            FROM Job j JOIN j.skills s
+            WHERE j.id IN :jobIds
+            """)
+    List<JobSkillRow> findSkillsForJobs(@Param("jobIds") Collection<UUID> jobIds);
+
+    /**
      * Whether a company has any openings at all. Cheaper than counting when the
      * answer only needs to be yes or no.
      */
     boolean existsByCompanyId(UUID companyId);
+
+    /** Projection for {@link #findSkillsForJobs}. */
+    interface JobSkillRow {
+        UUID getJobId();
+
+        String getNormalizedName();
+
+        String getName();
+    }
 }

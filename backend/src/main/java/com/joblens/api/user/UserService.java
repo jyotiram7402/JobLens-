@@ -5,6 +5,7 @@ import com.joblens.api.user.domain.UserProfile;
 import com.joblens.api.user.dto.CurrentUserResponse;
 import com.joblens.api.user.dto.UpdateUserProfileRequest;
 import com.joblens.api.user.dto.UserProfileResponse;
+import com.joblens.api.skill.SkillService;
 import com.joblens.api.user.exception.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,10 +33,19 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
 
+    /**
+     * Skills are a shared vocabulary, so the names on a request have to be
+     * resolved to real rows before the profile can hold them. The entity cannot
+     * do that itself -- it would need a repository -- so it happens here.
+     */
+    private final SkillService skillService;
+
     public UserService(UserRepository userRepository,
-                       UserProfileRepository userProfileRepository) {
+                       UserProfileRepository userProfileRepository,
+                       SkillService skillService) {
         this.userRepository = userRepository;
         this.userProfileRepository = userProfileRepository;
+        this.skillService = skillService;
     }
 
     /**
@@ -69,7 +79,7 @@ public class UserService {
                 request.yearsOfExperience(),
                 trimToNull(request.currentRole()),
                 request.remotePreference(),
-                request.skills(),
+                skillService.resolveAll(request.skills()),
                 request.preferredRoles(),
                 request.preferredLocations());
 

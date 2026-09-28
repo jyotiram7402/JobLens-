@@ -166,6 +166,32 @@ proof the code works. This made them a prerequisite, not a final step.
       service
 - [x] `docs/api/jobs.md`
 
+### Step 7 - Job matching engine
+
+- [x] `V6__create_skills_tables.sql`: shared `skills` vocabulary, `job_skills`,
+      `user_profile_skills`, backfilled from `user_skills`, which it drops
+- [x] `skill` module — its own, because both `user` and `job` reference it
+- [x] `SkillService` find-or-create: two queries for any number of names, and
+      tolerant of the race on the unique index
+- [x] `UserProfile.skills` and `Job.skills` both point at the shared table
+- [x] Jobs accept and return skills, so `job_skills` can be populated through
+      the API rather than only by seed data
+- [x] `MatchingWeights` — every number in one configurable place
+- [x] `JobMatchingEngine` — pure, deterministic, no database, no AI
+- [x] Skill, experience, location, role and work-mode rules, each documented
+- [x] Missing criteria excluded from the total rather than scored zero, and
+      "nothing judgeable" reported as unscored rather than 0
+- [x] `MatchExplanationWriter` — sentences generated from the outcome, never
+      claiming a skill the user lacks
+- [x] `GET /jobs/{jobId}/match` and `GET /jobs/recommended`, both authenticated,
+      neither accepting a user id
+- [x] Security rule ordering so the matching routes are not swallowed by the
+      public `GET /jobs/**` rule
+- [x] N+1 prevented twice: entity graph for companies, flat projection for job
+      skills
+- [x] Tests: engine rules, explanation, security and end-to-end matching
+- [x] `docs/api/matching.md`
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -189,13 +215,23 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 7 - Matching
+### Step 8 - Frontend
 
-- [ ] Score a job against a user profile from skills, preferred roles,
-      preferred locations, remote preference and experience
-- [ ] Explainable output — why a job scored what it did, not just a number
-- [ ] Match score on job responses for an authenticated caller
-- [ ] Join on the normalized columns already stored by both sides
+- [ ] Login and registration screens, token handling
+- [ ] Company list and detail
+- [ ] Job list with the search filters, and job detail
+- [ ] Match score and explanation on a job
+- [ ] Profile editing, including skills
+
+### Deferred from Step 7
+
+- [ ] Narrow recommendation candidates by shared skills instead of recency, so
+      a good older match is not missed
+- [ ] Skill synonyms ("NodeJS" vs "Node.js") — needs evidence of the problem
+      before it needs a table
+- [ ] Nice-to-have vs required skills on a job, with a scoring rule to match
+- [ ] Match scores on the job search response, if the frontend wants them there
+- [ ] Score labels ("Strong Match"), only as documented score ranges
 
 ### Deferred from Step 6
 

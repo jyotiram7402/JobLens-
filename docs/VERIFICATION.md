@@ -327,3 +327,89 @@ On a nearly empty table a sequential scan is correct and not a failure.
 
 In CI: five more test classes, one of which exercises the whole search against
 the PostgreSQL service container.
+
+### Step 7 — Job matching
+
+The migration is destructive (it drops `user_skills`), so check it first:
+
+```sql
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+SELECT count(*) AS skills FROM skills;
+SELECT count(*) AS links  FROM user_profile_skills;
+SELECT to_regclass('user_skills');   -- expect NULL: the old table is gone
+```
+
+If any profile had skills before this deploy, `links` must be at least as large
+as the number of those rows. If it is zero and skills existed, the backfill
+failed silently — stop and tell me.
+
+**Security ordering first**, because it is the one that matters:
+
+```bash
+curl -i '<api>/api/v1/jobs/recommended'
+curl -i '<api>/api/v1/jobs/00000000-0000-0000-0000-000000000000/match'
+```
+Both must be `401 UNAUTHENTICATED`. A `200` here means the matching routes are
+being swallowed by the public `GET /api/v1/jobs/**` rule, and every user's match
+results are readable anonymously. And ordinary discovery must still work:
+
+```bash
+curl -i '<api>/api/v1/jobs'
+```
+
+Now a real match. Set a profile, create a job with skills, and score it:
+
+```bash
+curl -s -X PUT <api>/api/v1/users/me/profile -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"skills":["Java","Spring Boot","Docker"],"yearsOfExperience":3,
+       "preferredRoles":["Java Backend Developer"],"preferredLocations":["Pune"],
+       "remotePreference":"HYBRID"}'
+```
+
+```bash
+curl -s -X POST <api>/api/v1/jobs -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"companyId":"<company-uuid>","title":"Java Backend Developer",
+       "location":"Pune, Maharashtra, India","employmentType":"FULL_TIME",
+       "workMode":"HYBRID","experienceMin":2,"experienceMax":5,
+       "skills":["Java","Spring Boot","PostgreSQL"]}'
+```
+
+```bash
+curl -s "<api>/api/v1/jobs/<jobId>/match" -H "Authorization: Bearer $TOKEN"
+```
+
+Expect `scored: true`, a `breakdown` with all five criteria, `missingSkills`
+containing exactly `PostgreSQL`, and an `explanation` array. **Read the
+explanation**: it must not claim you have PostgreSQL.
+
+Case-insensitivity through the shared table — set skills as `["java","spring
+boot"]` and re-match; both must still count as matched.
+
+Missing-data handling:
+
+```bash
+# A brand new account with an empty profile
+curl -i "<api>/api/v1/jobs/<jobId>/match" -H "Authorization: Bearer $NEW_TOKEN"
+```
+Expect `422 PROFILE_NOT_READY`, not a score of 0.
+
+Recommendations:
+
+```bash
+curl -s '<api>/api/v1/jobs/recommended?page=0&size=20' -H "Authorization: Bearer $TOKEN"
+curl -i '<api>/api/v1/jobs/recommended?size=5000' -H "Authorization: Bearer $TOKEN"
+```
+The first must be sorted by `score` descending and carry `hasNext`/`hasPrevious`;
+the second must be a `400`.
+
+**Check `/jobs/recommended` is not shadowed by `/jobs/{id}`.** If it returns
+`400` complaining about a UUID, Spring is routing it to the detail endpoint.
+
+**The N+1 check.** Locally with `show-sql: true`, request recommendations and
+read the SQL log: expect roughly one query for the candidate jobs, one for their
+skills, and one for the profile — not one per job and not one per job's skills.
+
+In CI: three more test classes, one of which drives the whole matching flow
+through the real filter chain.

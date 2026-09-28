@@ -221,6 +221,7 @@ Migrations so far:
 | `V3__create_users_and_profile_tables.sql` | `users`, `user_profiles`, and the three preference collections. |
 | `V4__create_jobs_table.sql` | The `jobs` table, its constraints and its foreign key index. |
 | `V5__add_job_search_indexes.sql` | The composite index serving the default job search. |
+| `V6__create_skills_tables.sql` | The shared `skills` vocabulary plus `job_skills` and `user_profile_skills`, backfilled from the old `user_skills` table, which it drops. |
 
 Each domain gets its own numbered migration in its own step. Applied migrations
 are never edited or renamed — a change means a new version.
@@ -664,6 +665,162 @@ Deliberately **not** indexed:
   free tier may not allow, it costs real write time and disk, and at V1 volumes
   the sequential scan is measured in milliseconds. When that stops being true it
   is a migration, not a rewrite.
+
+### Matching
+
+```
+          User Profile
+                │
+   ┌────────────┼────────────┬───────────┬────────────┐
+ Skills    Experience     Roles     Locations    Work mode
+   │            │            │           │            │
+   └────────────┴─────┬──────┴───────────┴────────────┘
+                      ▼
+              Matching Engine          (pure, no database)
+                      │
+                      ▼
+                    Job
+                      │
+                      ▼
+            Score + Breakdown + Explanation
+```
+
+#### Engine and service are separate, deliberately
+
+`JobMatchingEngine` holds the rules and touches no database, no clock and no
+randomness. `JobMatchingService` touches the database and holds no rules. The
+engine takes `MatchProfile` and `MatchJob` value objects rather than entities,
+so the scoring rules can be tested in milliseconds and reviewed without reading
+a persistence layer — and so the same inputs always give the same score.
+
+#### No AI, on purpose
+
+Every rule is arithmetic a person can read and disagree with. A model would
+probably rank better on average and would not be able to say why; "why did this
+job score 72?" is a question this product exists to answer. AI-assisted matching
+is a later step and will sit beside this rather than replace it.
+
+#### The formula
+
+```
+for each of the five criteria:
+    if there is enough data on both sides:
+        earned    += fraction(0..1) × weight
+        available += weight
+
+score = round(earned / available × 100)
+```
+
+| Criterion | Weight | Why |
+| --------- | -----: | --- |
+| Skills | 50 | The only criterion about capability. Worth as much as the other four together. |
+| Experience | 20 | A real signal but a crude one — two years somewhere demanding beats five somewhere idle. |
+| Location | 15 | A hard blocker in practice, but about circumstances rather than suitability. |
+| Role | 10 | Titles are inconsistent between companies. Low weight reflects low trust. |
+| Work mode | 5 | Real but narrow: three values, and hybrid is partly compatible with both others. |
+
+All five live in `MatchingWeights`, bound from `joblens.matching.weights.*`.
+Numbers scattered through scoring code are impossible to review or tune, and
+turn "why did this score 72?" into archaeology.
+
+#### Missing data is excluded, not scored zero
+
+A criterion that cannot be judged drops out of the total **and takes its weight
+with it**. A user who has not listed preferred locations has not failed a
+location test; they have not taken one. Scoring them zero would punish an
+incomplete profile and make every score incomparable with every other.
+
+The cost, stated: two scores are strictly comparable only when computed over the
+same criteria, so every response reports which applied, and the explanation says
+so in words. If nothing can be judged the result is `scored: false` rather than
+0 — "we cannot tell" and "terrible match" lead a user to do different things.
+
+#### The rules
+
+- **Skills** — fraction of the job's skills the user holds. Extra skills the job
+  does not ask for are neither rewarded nor penalised. Not judged if either side
+  has none.
+- **Experience** — full inside the range; `1 − shortfall/3` below the minimum,
+  reaching zero at three years short; `1 − 0.1 × excess` above the maximum, never
+  below half. Asymmetric because being under-qualified is an obstacle and being
+  over-qualified is not.
+- **Location** — whole-word matching, so `pune` matches `pune maharashtra india`
+  but not `punegar`. Preferring `remote` matches a remote job whatever its
+  address says. Binary; real distance is a later step.
+- **Role** — fraction of the user's preferred-title words present in the job
+  title, best of several. Extra title words are free, so "Senior" does not spoil
+  a match. Below half is treated as coincidence, because nearly every
+  engineering title shares "developer" with nearly every other.
+- **Work mode** — exact 1.0, anything involving hybrid 0.5, remote against
+  onsite 0.0. `ANY` means no preference stated and is not judged.
+
+#### The shared skill vocabulary
+
+Skills became their own table in step 7 (`V6`), with `job_skills` and
+`user_profile_skills` pointing at it. Previously a profile's skills were private
+free text, which was right when nothing else had skills and wrong the moment
+matching had to ask whether a job's "Java" and a user's "Java" are the same
+thing. Two independent text columns can only be compared by string equality and
+drift apart forever; a shared row is an identity.
+
+Identity is `normalized_name`, from the same `TextNormalizer` used for company
+names and job titles, so "Spring Boot", "spring boot" and "SPRING  BOOT"
+converge. `SkillService` does find-or-create in two queries however many names
+are supplied, and tolerates the race on the unique index — two people typing
+"Kubernetes" at once is not an error.
+
+The vocabulary is open rather than curated: a user may name a skill nobody has
+used before. The cost is near-duplicates ("NodeJS" vs "Node.js"), accepted for
+V1. A synonym table is a later decision with evidence behind it.
+
+Deliberately not an ontology — no categories, no parent/child, no proficiency.
+
+Preferred roles and locations stayed as value collections, and the difference is
+the point: a skill is something jobs also reference, so it needs identity. A
+preferred role is one person's wording of a preference with no counterpart
+table.
+
+#### Recommendations, and their limits
+
+`GET /jobs/recommended` scores **the 200 most recent active jobs**, sorts by
+score then posting date then id, and pages the result in memory. One
+page-sized query plus one skills query, whatever the table grows to.
+
+The limitation is real: a strong match outside that window is not found, and
+`totalElements` counts candidates rather than all jobs. Fixing it means
+narrowing candidates by something better than recency — jobs sharing at least
+one of the user's skills, which `ix_job_skills_skill_id` already supports — or
+precomputing scores. Worth doing when there are enough jobs for the window to
+bite; neither needs Redis or a recommendation service.
+
+Paging happens in memory because the ordering is per-user and cannot be
+expressed as SQL ordering without storing scores. The candidate cap is what
+keeps that honest — the list being sliced is at most 200 entries.
+
+#### N+1 prevention
+
+Two places would have produced one, and both are handled:
+
+- **Company per job** — the candidate query uses `findByActiveTrue` with
+  `@EntityGraph(attributePaths = "company")`, safe because the association is
+  to-one.
+- **Skills per job** — `findSkillsForJobs` returns every (job, skill) pair for
+  the candidate set in a single flat projection, grouped in memory. Fetch
+  joining the collection alongside pagination would multiply rows and force
+  in-memory paging; lazy loading inside the scoring loop would be 200 queries.
+
+A single match uses `findWithCompanyAndSkillsById`, one query for both.
+
+#### Security
+
+Both endpoints require authentication and neither accepts a user id — the
+profile is always the token's, so there is nothing to tamper with.
+
+One ordering detail worth knowing: `GET /api/v1/jobs/**` is public for
+discovery, so `/jobs/recommended` and `/jobs/*/match` are listed **before** it in
+`SecurityConfig` and marked `authenticated()`. Security rules are evaluated in
+order and the first match wins; listed afterwards, a user's match results would
+become an anonymous read. There is a test for exactly that.
 
 ### API versioning
 

@@ -84,6 +84,17 @@ management:
       enabled: false
 
 joblens:
+  matching:
+    # Every number the scoring engine uses. Documented in MatchingWeights and
+    # ARCHITECTURE.md; changing one changes every score, so they live here
+    # rather than scattered through the scoring code.
+    weights:
+      skills: ${MATCH_WEIGHT_SKILLS:50}
+      experience: ${MATCH_WEIGHT_EXPERIENCE:20}
+      location: ${MATCH_WEIGHT_LOCATION:15}
+      role: ${MATCH_WEIGHT_ROLE:10}
+      work-mode: ${MATCH_WEIGHT_WORK_MODE:5}
+
   jwt:
     # JWT_SECRET has NO default in any profile, deliberately. A committed
     # fallback would be shared by every deployment that forgot to set the

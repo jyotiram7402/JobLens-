@@ -13,7 +13,7 @@ state. Steps are built in order; nothing is implemented ahead of its step.
 | 4   | Authentication + User | `users`, `user_profiles` and preference tables; registration and login; bcrypt hashing; stateless JWT with a filter chain; `/users/me` and the career profile; company writes secured. **Done.** |
 | 5   | Jobs                  | `V4__create_jobs_table.sql`, job domain module (entity, repository, service, controller, DTOs), employment type and work mode, public reads and authenticated writes, close instead of delete. **Done.** |
 | 6   | Search / filtering    | Job search over ten composable filters via JPA Specifications, case-insensitive keyword matching on title and description, experience-range overlap, allowlisted sorting with a stable tiebreaker, capped pagination, N+1 prevented with an entity graph, `V5__add_job_search_indexes.sql`. **Done.** |
-| 7   | Matching              | Profile skills/preferences model, explainable scoring of a job against a profile, match score on job responses. |
+| 7   | Matching              | Shared `skills` vocabulary (`V6`) referenced by profiles and jobs; deterministic weighted engine scoring skills, experience, location, role and work mode; missing criteria excluded rather than zeroed; generated explanations; `/jobs/{id}/match` and `/jobs/recommended`. **Done.** |
 | 8   | Frontend              | Real UI for login/registration, company list and detail, job list and detail; auth token handling; shared components. |
 | 9   | Dashboard             | Authenticated landing view: profile summary, recent companies, recommended jobs. |
 | 10  | Tracking              | Track/untrack companies and jobs, application status per tracked job, tracking views. |

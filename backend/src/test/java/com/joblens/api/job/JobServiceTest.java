@@ -40,6 +40,9 @@ class JobServiceTest {
     @Mock
     private CompanyRepository companyRepository;
 
+    @Mock
+    private com.joblens.api.skill.SkillService skillService;
+
     @InjectMocks
     private JobService jobService;
 
@@ -50,7 +53,8 @@ class JobServiceTest {
 
     private static CreateJobRequest createRequest(UUID companyId, Instant postedAt) {
         return new CreateJobRequest(companyId, "  Java Backend Developer  ", "  ",
-                " Pune ", EmploymentType.FULL_TIME, WorkMode.HYBRID, 2, 5, null, postedAt);
+                " Pune ", EmploymentType.FULL_TIME, WorkMode.HYBRID, 2, 5, null,
+                java.util.List.of("Java"), postedAt);
     }
 
     @Test
@@ -104,7 +108,7 @@ class JobServiceTest {
     @Test
     void throwsNotFoundForUnknownJob() {
         UUID id = UUID.randomUUID();
-        when(jobRepository.findWithCompanyById(id)).thenReturn(Optional.empty());
+        when(jobRepository.findWithCompanyAndSkillsById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> jobService.getById(id))
                 .isInstanceOf(JobNotFoundException.class)
@@ -116,10 +120,10 @@ class JobServiceTest {
         UUID id = UUID.randomUUID();
         Job job = Job.create(company(), "Old Title", null, null, EmploymentType.FULL_TIME,
                 WorkMode.ONSITE, null, null, null, Instant.parse("2026-09-01T00:00:00Z"));
-        when(jobRepository.findWithCompanyById(id)).thenReturn(Optional.of(job));
+        when(jobRepository.findWithCompanyAndSkillsById(id)).thenReturn(Optional.of(job));
 
         jobService.update(id, new UpdateJobRequest("Senior Java Engineer", null, null,
-                EmploymentType.CONTRACT, WorkMode.REMOTE, 5, 8, null, null));
+                EmploymentType.CONTRACT, WorkMode.REMOTE, 5, 8, null, null, null));
 
         assertThat(job.getTitle()).isEqualTo("Senior Java Engineer");
         assertThat(job.getNormalizedTitle()).isEqualTo("senior java engineer");
@@ -132,10 +136,10 @@ class JobServiceTest {
         Instant originallyPosted = Instant.parse("2026-09-01T00:00:00Z");
         Job job = Job.create(company(), "Old Title", null, null, EmploymentType.FULL_TIME,
                 WorkMode.ONSITE, null, null, null, originallyPosted);
-        when(jobRepository.findWithCompanyById(id)).thenReturn(Optional.of(job));
+        when(jobRepository.findWithCompanyAndSkillsById(id)).thenReturn(Optional.of(job));
 
         jobService.update(id, new UpdateJobRequest("New Title", null, null,
-                EmploymentType.FULL_TIME, WorkMode.ONSITE, null, null, null, null));
+                EmploymentType.FULL_TIME, WorkMode.ONSITE, null, null, null, null, null));
 
         assertThat(job.getPostedAt()).isEqualTo(originallyPosted);
     }
@@ -145,7 +149,7 @@ class JobServiceTest {
         UUID id = UUID.randomUUID();
         Job job = Job.create(company(), "A Job", null, null, EmploymentType.FULL_TIME,
                 WorkMode.ONSITE, null, null, null, Instant.now());
-        when(jobRepository.findWithCompanyById(id)).thenReturn(Optional.of(job));
+        when(jobRepository.findWithCompanyAndSkillsById(id)).thenReturn(Optional.of(job));
 
         JobResponse response = jobService.close(id);
 
