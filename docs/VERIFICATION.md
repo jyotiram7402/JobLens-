@@ -413,3 +413,45 @@ skills, and one for the profile — not one per job and not one per job's skills
 
 In CI: three more test classes, one of which drives the whole matching flow
 through the real filter chain.
+
+### Step 8 — React frontend foundation
+
+CI first. The frontend job now runs `typecheck`, `test` and `build`; the type
+check is the one most likely to fail, because `tsconfig.json` has
+`noUnusedLocals`, `noUnusedParameters` and `verbatimModuleSyntax` on and a
+stray import is enough.
+
+Locally, with the backend running:
+
+```bash
+cd frontend && cp .env.example .env.local && npm install
+```
+**Commit the `package-lock.json` this produces.** It still does not exist, which
+is the only reason CI uses `npm install` rather than `npm ci`.
+
+```bash
+npm run typecheck && npm test && npm run build && npm run dev
+```
+
+Then open `http://localhost:5173` and check:
+
+- the **Environment check** reports `API reachable: yes` with the application
+  name, version and environment. This is the first time that check has ever had
+  a chance to succeed, so it is also the first real proof the two halves of the
+  project can talk to each other;
+- every navigation link reaches its placeholder page;
+- `/jobs/abc` and `/companies/abc` render and echo the route parameter back,
+  which proves route params are wired;
+- an unknown path renders the not-found page rather than a blank screen;
+- press Tab from the top: a **Skip to content** link appears first, and every
+  control thereafter shows a visible focus ring;
+- narrow the window to phone width — the navigation moves above the content and
+  nothing scrolls sideways.
+
+If the environment check says `not configured`, `VITE_API_BASE_URL` is missing.
+Remember it is the **origin** (`http://localhost:8080`), not the API root —
+`/api/v1` is added in code, and including it would produce
+`/api/v1/api/v1/meta`.
+
+On Vercel, the same checks against the deployed URL, plus a reload of a deep
+link such as `/jobs/abc` to confirm the SPA rewrite still works.

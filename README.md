@@ -50,7 +50,7 @@ recommendation models trained on user behaviour, Kafka, Redis.
 
 | Layer          | Choice                                   |
 | -------------- | ---------------------------------------- |
-| Frontend       | React 18, TypeScript, Vite, React Router |
+| Frontend       | React 18, TypeScript, Vite, React Router, Vitest |
 | Backend        | Java 21, Spring Boot 3.3, Maven — Web, Validation, Data JPA, Actuator |
 | Database       | PostgreSQL 16, Spring Data JPA, Flyway migrations |
 | AI / OCR       | Python, FastAPI (later step)             |
@@ -156,6 +156,47 @@ There is no `DELETE`: jobs, tracking and scans will reference companies, and an
 
 Full request/response examples, validation rules and status codes:
 [docs/api/companies.md](docs/api/companies.md).
+
+### Frontend
+
+React 18 + TypeScript + Vite, organised by feature rather than by layer:
+
+```
+src/
+├── app/           root component, router, error boundary
+├── components/    layout shell and shared UI (Button, Input, states…)
+├── features/      auth, companies, dashboard, jobs, matching, profile, scan
+├── lib/           environment configuration
+├── services/      API client, token storage
+└── types/         shapes shared across features
+```
+
+A change to job search touches `features/jobs/` rather than being spread across
+three directories. Something is promoted into `components/` when more than one
+feature uses it.
+
+Every request goes through one API client, so the base URL, the `Authorization`
+header and error translation are decided once:
+
+```ts
+const page = await api.get<PageResponse<JobSummary>>(endpoints.jobs.search, {
+  query: { search: 'java', location: 'Pune', size: 20 },
+});
+```
+
+Failures throw `ApiError` carrying a stable `code`, field-level `details` for a
+400, and the `traceId` that also appears in the backend logs.
+
+`VITE_API_BASE_URL` is the backend **origin** — `/api/v1` is added in code,
+because the API version belongs to the contract rather than the deployment.
+Anything prefixed `VITE_` is compiled into the bundle and public, so no secret
+ever goes behind that prefix.
+
+No Redux and no data-fetching library yet: there is no state shared between
+distant parts of the tree and no page that fetches the same thing twice. Both
+are easy to add later and awkward to unpick.
+
+Setup, scripts and deployment: [frontend/README.md](frontend/README.md).
 
 ### Job matching
 

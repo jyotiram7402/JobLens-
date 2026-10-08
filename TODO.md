@@ -192,6 +192,33 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] Tests: engine rules, explanation, security and end-to-end matching
 - [x] `docs/api/matching.md`
 
+### Step 8 - React frontend foundation
+
+- [x] Feature-oriented structure: `app/`, `components/`, `features/`, `lib/`,
+      `services/`, `types/`
+- [x] Routing with public and protected groups, and the one place the auth
+      guard will go
+- [x] `services/api/client.ts` — GET/POST/PUT/DELETE, bearer header, query
+      building that drops unset filters, 204 handling, network-failure handling
+- [x] `services/api/endpoints.ts` — every backend path in one place
+- [x] `ApiError` with status, stable code, message, field details and `traceId`
+- [x] `tokenStorage` — minimal, `sessionStorage`-backed, trade-off documented
+- [x] TypeScript models mirroring the real DTOs: auth, profile, company, job,
+      match, `PageResponse`, `ApiErrorBody`
+- [x] Shared UI: Button, Input, Select, Card, Badge, Spinner, LoadingState,
+      ErrorState, EmptyState
+- [x] Layout shell with responsive navigation and a skip link
+- [x] Accessibility built in: real buttons, `useId` label association,
+      `aria-invalid`/`aria-describedby`, focus ring, `prefers-reduced-motion`,
+      colour never the only signal
+- [x] `ErrorBoundary`, so one broken component cannot blank the page
+- [x] Page shells for home, login, register, dashboard, jobs, job detail,
+      company detail, profile and scan
+- [x] Home page keeps the deployment environment check
+- [x] Vitest + Testing Library, with component, page and utility examples
+- [x] `npm test` added to CI
+- [x] `frontend/README.md`; `.env.example` documents origin-not-API-root
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -215,13 +242,25 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 8 - Frontend
+### Step 9 - Frontend features
 
-- [ ] Login and registration screens, token handling
-- [ ] Company list and detail
-- [ ] Job list with the search filters, and job detail
-- [ ] Match score and explanation on a job
-- [ ] Profile editing, including skills
+- [ ] Connect login and registration; store the token; add the guard to
+      `ProtectedRoutes`
+- [ ] A `useCurrentUser` context so the header and dashboard share one fetch
+- [ ] Job search UI over the existing filters, with pagination and sorting
+- [ ] Job detail, with the match breakdown and explanation
+- [ ] Company detail, listing its jobs via `/jobs?companyId=`
+- [ ] Profile editing — remember PUT is a full replacement
+- [ ] Dashboard: profile summary and recommended jobs
+- [ ] Route `/jobs/recommended` **before** `/jobs/:jobId`
+
+### Deferred from Step 8
+
+- [ ] Revisit token storage if XSS risk justifies httpOnly cookies, which would
+      mean cookie auth and CSRF protection on the backend
+- [ ] A data-fetching library, once a page genuinely refetches the same data
+- [ ] ESLint and Prettier — no linting is configured anywhere in the project yet
+- [ ] A real favicon and social preview image
 
 ### Deferred from Step 7
 

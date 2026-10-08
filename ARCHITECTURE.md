@@ -863,6 +863,155 @@ Tests run against real PostgreSQL rather than an in-memory database, because an
 in-memory database behaves differently from the thing we deploy -- which is
 precisely what an integration test is supposed to catch.
 
+## Frontend architecture
+
+```
+React
+  │
+  ├── Router            app/router.tsx — public and protected route groups
+  │
+  ├── Feature modules   features/{auth,jobs,companies,matching,profile,scan}
+  │                     each owning its pages and its types
+  │
+  ├── Shared components components/{layout,ui}
+  │
+  └── API services      services/api — one HTTP client, one error type,
+          │             one list of endpoint paths
+          ▼
+     Spring Boot
+```
+
+### Feature-oriented, not layer-oriented
+
+```
+src/
+├── app/          root component, router, error boundary, non-feature pages
+├── components/   layout shell and shared UI
+├── features/     one folder per domain, owning its pages and types
+├── lib/          environment configuration
+├── services/     api client, token storage
+├── types/        shapes shared across features
+└── test/         Vitest setup
+```
+
+The same reasoning as the backend's packages: a feature lives in one place, so a
+change to job search touches `features/jobs/` rather than being spread across a
+`components/`, a `pages/` and a `types/` directory. The rule for promoting
+something into `components/` is that more than one feature uses it — a component
+used once belongs with its page.
+
+### Routing
+
+`createBrowserRouter`, with every route nested under one layout so the shell is
+defined once. Routes are grouped into public (`/`, `/login`, `/register`) and
+protected (`/dashboard`, `/jobs`, `/jobs/:jobId`, `/companies/:companyId`,
+`/profile`, `/scan`).
+
+The protected group sits under a `ProtectedRoutes` element that currently
+renders its children unchanged. The guard is one line and the group is the place
+it goes — but adding it before sign-in works would lock everyone out of the only
+pages that could test it. The grouping also makes "which pages need an account?"
+answerable from the route table.
+
+**This is a convenience, not a security boundary.** The backend rejects
+unauthenticated requests itself; hiding a route in the browser stops nothing.
+
+Planned and documented, not yet routed: `/tracked-companies` (step 10) and
+`/jobs/recommended` (step 9). The latter must be declared *before*
+`/jobs/:jobId`, or "recommended" is read as an id.
+
+### API client
+
+Every request goes through `services/api/client.ts`. That is what lets the base
+URL, the `Authorization` header, JSON encoding and error translation be decided
+once; a feature that calls `fetch` directly loses all four.
+
+`services/api/endpoints.ts` holds the paths, so a renamed route is one edit and
+the file doubles as the documented contract between the two halves of the
+project.
+
+Failures throw `ApiError` carrying `status`, a stable `code`, a `message`,
+field-level `details` and the `traceId` that also appears in the backend logs.
+It handles the awkward cases deliberately: a rejected `fetch` (offline, DNS,
+CORS, or a sleeping free-tier backend — the browser does not say which), a 204
+with no body, and an error response that is not JSON at all.
+
+**No data-fetching library.** TanStack Query brings caching, retries and
+deduplication, none of which this application needs yet — there are no pages
+that fetch the same thing twice. It can wrap these functions later without
+feature code changing.
+
+### TypeScript models
+
+Types mirror the backend DTOs field for field, taken from the source rather than
+assumed. They describe the *API contract*: fields the server has but does not
+expose — normalized names, entity versions — are deliberately absent.
+
+Two corrections worth recording, because the obvious guesses are wrong:
+
+- The job field is **`applyUrl`**. There is no `applicationUrl` and no `source`
+  field; aggregating external job sources is a V2 concern.
+- There is **no `/companies/{id}/jobs` endpoint.** A company's openings come
+  from `/jobs?companyId=…`, the same search endpoint with one more filter — so
+  that list gets pagination, sorting and every other filter for free.
+
+`CriterionScore.applicable: false` is also worth calling out on the frontend: it
+means the criterion was excluded from the total along with its weight, not that
+it scored zero. `maxScore` is then 0, and the UI must show the reason rather
+than a 0/50 bar — the user has not failed anything.
+
+### State management
+
+React state and Context. No Redux, no Zustand, no store.
+
+There is currently no state shared between distant parts of the tree. The one
+candidate is the signed-in user, which is a small Context when authentication is
+wired up. A store adopted before there is shared state to put in it is a set of
+conventions without a problem, and it is far easier to add one later than to
+unpick one that was never needed.
+
+### Environment configuration
+
+`VITE_API_BASE_URL` is the backend **origin** (`http://localhost:8080`), not the
+API root. The `/api/v1` prefix lives in code, because the API version belongs to
+the contract rather than to the deployment — moving to `/api/v2` is then a code
+change, not a reconfiguration of every environment.
+
+A missing value does not throw during module initialisation. That renders a
+blank page with the reason buried in the console, which is the worst possible
+failure on a freshly configured deployment; it is reported in the UI instead.
+
+**Anything prefixed `VITE_` is compiled into the bundle and readable by anyone.**
+No secret, password, signing key or private API key may ever go behind that
+prefix.
+
+### Token storage
+
+Held in memory and mirrored to `sessionStorage`. In-memory alone logs the user
+out on every refresh; `localStorage` persists across browser sessions and is
+readable by any injected script. `sessionStorage` survives a refresh and dies
+with the tab.
+
+None of these resist XSS. The only storage that does is an httpOnly cookie,
+which would mean switching the backend from header authentication to cookies and
+taking on CSRF protection with it — a real decision, not something to do in
+passing. Recorded here as the thing to revisit.
+
+### Accessibility
+
+Treated as part of building a component, not a later cleanup: real `<button>`
+elements, labels tied to inputs with `useId`, `aria-invalid` and
+`aria-describedby` on errors, a visible `:focus-visible` ring everywhere, a skip
+link, `role="status"` on the spinner, `role="alert"` on error messages, and
+`prefers-reduced-motion` respected. Colour never carries meaning alone — badges
+take an optional screen-reader label for exactly that reason.
+
+### Vercel deployment
+
+Static build to `dist/`, Root Directory `frontend`. `vercel.json` rewrites all
+paths to `index.html`, which client-side routing needs — without it, reloading
+`/jobs/123` returns a CDN 404. No backend URL is hard-coded anywhere.
+
 ## Frontend / backend relationship
 
 Strictly separated. The React application is a static bundle; it holds no

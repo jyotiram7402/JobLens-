@@ -14,8 +14,8 @@ state. Steps are built in order; nothing is implemented ahead of its step.
 | 5   | Jobs                  | `V4__create_jobs_table.sql`, job domain module (entity, repository, service, controller, DTOs), employment type and work mode, public reads and authenticated writes, close instead of delete. **Done.** |
 | 6   | Search / filtering    | Job search over ten composable filters via JPA Specifications, case-insensitive keyword matching on title and description, experience-range overlap, allowlisted sorting with a stable tiebreaker, capped pagination, N+1 prevented with an entity graph, `V5__add_job_search_indexes.sql`. **Done.** |
 | 7   | Matching              | Shared `skills` vocabulary (`V6`) referenced by profiles and jobs; deterministic weighted engine scoring skills, experience, location, role and work mode; missing criteria excluded rather than zeroed; generated explanations; `/jobs/{id}/match` and `/jobs/recommended`. **Done.** |
-| 8   | Frontend              | Real UI for login/registration, company list and detail, job list and detail; auth token handling; shared components. |
-| 9   | Dashboard             | Authenticated landing view: profile summary, recent companies, recommended jobs. |
+| 8   | Frontend foundation   | Feature-oriented React structure, routing with public/protected groups, API client and error model, TypeScript models mirroring the backend DTOs, shared accessible UI components, error boundary, Vitest. Page shells only. **Done.** |
+| 9   | Frontend features     | Connect authentication, job search and filtering, job and company detail, the match breakdown, profile editing, and the dashboard landing view. |
 | 10  | Tracking              | Track/untrack companies and jobs, application status per tracked job, tracking views. |
 | 11  | Scan                  | Image upload / camera capture page, upload endpoint, storage strategy, scan result UI, with recognition stubbed. |
 | 12  | OCR / AI              | Python FastAPI service with OCR, backend-to-AI HTTP integration, candidate-to-company resolution and confidence handling. |
