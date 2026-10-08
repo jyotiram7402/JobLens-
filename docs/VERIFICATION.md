@@ -501,3 +501,73 @@ Watch the network tab while typing in the search box: there should be roughly
 In CI: five more frontend test files. The frontend job runs `typecheck`, `test`
 and `build`, and with this much new TypeScript the type check is the most likely
 place to fail.
+
+### Step 10 — Company tracking
+
+Migration first:
+
+```sql
+SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
+SELECT conname FROM pg_constraint WHERE conrelid = 'tracked_companies'::regclass;
+```
+Expect `V7` applied and `uq_tracked_companies_user_company` among the constraints.
+
+**Security, before anything else:**
+
+```bash
+curl -i '<api>/api/v1/companies/00000000-0000-0000-0000-000000000000/track'
+curl -i -X POST '<api>/api/v1/companies/00000000-0000-0000-0000-000000000000/track'
+curl -i '<api>/api/v1/users/me/tracked-companies'
+```
+All three must be `401`. The first matters most: it is a `GET` under the public
+`/companies/**` prefix, and a `200` or `500` there means the security rule
+ordering is wrong. Company reads must still be public:
+
+```bash
+curl -i '<api>/api/v1/companies'
+```
+
+**Behaviour**, with a token and a company id:
+
+```bash
+curl -s -X POST "<api>/api/v1/companies/$COMPANY/track" -H "Authorization: Bearer $TOKEN"
+curl -s -X POST "<api>/api/v1/companies/$COMPANY/track" -H "Authorization: Bearer $TOKEN"
+curl -s "<api>/api/v1/users/me/tracked-companies" -H "Authorization: Bearer $TOKEN"
+```
+Both POSTs must return `200` with `"tracked": true` and the **same**
+`trackedAt` — tracking twice returns the original relationship. The list must
+show `totalElements: 1`.
+
+```bash
+curl -i -X DELETE "<api>/api/v1/companies/$COMPANY/track" -H "Authorization: Bearer $TOKEN"
+curl -i -X DELETE "<api>/api/v1/companies/$COMPANY/track" -H "Authorization: Bearer $TOKEN"
+```
+Both `204`. Then `GET /api/v1/companies/$COMPANY` must still return the company —
+untracking never deletes it.
+
+**Isolation** — register a second user, and confirm their list is empty and their
+status for the same company is `tracked: false`.
+
+**The double-click race** — fire two track requests at once:
+
+```bash
+for i in 1 2; do curl -s -X POST "<api>/api/v1/companies/$COMPANY/track" -H "Authorization: Bearer $TOKEN" & done; wait
+```
+Both must succeed, and the list must still show one row. A `500` here means the
+second-transaction re-read is not working.
+
+**The reserved slug** — create a company named exactly `Track`; its slug must be
+`track-2`, and `GET /api/v1/companies/by-slug/track-2` must work without a token.
+
+**In the UI:**
+
+1. Open a company signed out — the button reads **Sign in to track**.
+2. Sign in, open it again, press **Track company**: the button is disabled while
+   the request runs, then **✓ Tracked** and an **Untrack** button appear.
+3. Refresh — still tracked.
+4. **Tracked companies** in the navigation lists it, newest first.
+5. Untrack from the list — the card disappears at once and the count drops.
+6. The dashboard tile shows the real count, and the strip links to each company.
+
+In CI: three new backend test classes and two new frontend test files, plus
+updated dashboard, company page and slug tests.

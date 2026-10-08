@@ -5,6 +5,7 @@ import { useAsync } from '../../../hooks/useAsync';
 import { companiesApi } from '../api';
 import { jobsApi } from '../../jobs/api';
 import { JobCard } from '../../jobs/components/JobCard';
+import { TrackButton } from '../../tracking/components/TrackButton';
 
 /** Enough to show the openings without turning the page into a second job search. */
 const JOBS_PREVIEW_SIZE = 5;
@@ -64,12 +65,15 @@ export function CompanyDetailPage() {
     <div className="stack">
       <div className="company-header">
         <Avatar name={record.name} logoUrl={record.logoUrl} size="lg" />
-        <div>
+        <div className="company-header-text">
           <PageHeader title={record.name} />
           <p className="detail-subtitle">
             {[record.industry, record.location].filter(Boolean).join(' · ')}
           </p>
         </div>
+        {/* Fetches its own state and fails on its own: a tracking error must
+            never take the company page with it. */}
+        <TrackButton companyId={record.id} companyName={record.name} />
       </div>
 
       <Card>

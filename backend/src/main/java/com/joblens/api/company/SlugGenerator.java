@@ -1,5 +1,6 @@
 package com.joblens.api.company;
 
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -37,6 +38,22 @@ public final class SlugGenerator {
      */
     private static final int MAX_ATTEMPTS = 1000;
 
+    /**
+     * Slugs that would collide with a route.
+     *
+     * <p>{@code GET /companies/by-slug/{slug}} and
+     * {@code GET /companies/{companyId}/track} overlap at exactly one URL:
+     * {@code /companies/by-slug/track}. Security treats it as the
+     * authenticated tracking route, so a company whose slug was {@code track}
+     * would have a public page that anonymous visitors could not open.
+     *
+     * <p>Fixed here rather than in the routes because this is where it is
+     * cheapest: a company called "Track" simply gets {@code track-2}, and no
+     * route needs a regular expression. Any future action segment under
+     * {@code /companies/{id}/...} belongs in this set.
+     */
+    static final Set<String> RESERVED = Set.of("track");
+
     private SlugGenerator() {
     }
 
@@ -62,13 +79,17 @@ public final class SlugGenerator {
                     "Cannot build a slug from a name with no alphanumeric characters: " + name);
         }
 
-        if (!isTaken.test(base)) {
+        // A reserved slug is treated exactly like a taken one, so it gets the
+        // same -2 suffix and needs no separate code path.
+        Predicate<String> unavailable = isTaken.or(RESERVED::contains);
+
+        if (!unavailable.test(base)) {
             return base;
         }
 
         for (int suffix = 2; suffix <= MAX_ATTEMPTS; suffix++) {
             String candidate = withSuffix(base, suffix);
-            if (!isTaken.test(candidate)) {
+            if (!unavailable.test(candidate)) {
                 return candidate;
             }
         }

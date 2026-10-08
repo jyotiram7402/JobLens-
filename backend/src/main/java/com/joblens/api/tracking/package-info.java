@@ -1,17 +1,29 @@
 /**
- * Companies and jobs a user follows, and the status of each application.
+ * Companies a user follows.
  *
- * <p>Implemented in roadmap step 10. This package currently defines a
- * boundary only -- it holds no code by design.
+ * <p>Implemented in roadmap step 10. Job tracking and application status are
+ * not built yet; this module currently covers companies only.
  *
- * <p>Module layout, once populated:
  * <pre>
  * tracking/
- *   TrackingController.java   HTTP layer: routing, validation, DTO mapping
- *   TrackingService.java      business rules and transaction boundaries
- *   TrackingRepository.java   persistence
- *   domain/                  entities owned by this module
- *   dto/                     request and response records
+ *   TrackingController.java          POST/DELETE/GET /companies/{id}/track,
+ *                                    GET /users/me/tracked-companies
+ *   TrackingService.java             idempotent track/untrack, status, list
+ *   TrackedCompanyRepository.java    persistence
+ *   domain/TrackedCompany.java       user -> company, with when it started
+ *   dto/                             response records
  * </pre>
+ *
+ * <p>Three rules this module exists to keep:
+ *
+ * <ol>
+ *   <li><b>One user, one company, one row</b> -- enforced by a unique
+ *       constraint in the database, not only by a check in code, because a
+ *       check-then-insert is not atomic.</li>
+ *   <li><b>The user always comes from the token.</b> No endpoint accepts a
+ *       user id, so no request can read or change another user's tracking.</li>
+ *   <li><b>Tracking and untracking are idempotent.</b> Asking for a state that
+ *       already holds is a success, not a conflict.</li>
+ * </ol>
  */
 package com.joblens.api.tracking;

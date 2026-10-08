@@ -1,15 +1,17 @@
 import { Link } from 'react-router-dom';
-import { Card, EmptyState, ErrorState, LoadingState } from '../../../components/ui';
+import { Avatar, Card, EmptyState, ErrorState, LoadingState } from '../../../components/ui';
 import { useAsync } from '../../../hooks/useAsync';
 import { useAuth } from '../../auth/AuthContext';
 import { matchingApi } from '../../matching/api';
 import { jobsApi } from '../../jobs/api';
 import { JobCard } from '../../jobs/components/JobCard';
+import { trackingApi } from '../../tracking/api';
 import { greeting } from '../../../utils/format';
 import type { UserProfile } from '../../profile/types';
 
 const RECOMMENDED_COUNT = 5;
 const RECENT_COUNT = 4;
+const TRACKED_PREVIEW_COUNT = 6;
 
 /** A score at or above this is called a strong match in the UI. */
 const STRONG_MATCH = 75;
@@ -39,8 +41,9 @@ const PROFILE_FIELDS: { label: string; isSet: (profile: UserProfile) => boolean 
  * invented to make the dashboard look busy, which would make every other number
  * on it untrustworthy too.
  *
- * <p>Tracked companies are genuinely absent (step 10), so the tile says so
- * rather than showing a zero that looks like a fact.
+ * <p>The tracked-companies tile and section share one request: the list
+ * endpoint returns the first few companies <em>and</em> the total, so the count
+ * is the backend's own number rather than one counted from a partial list.
  */
 export function DashboardPage() {
   const { user } = useAuth();
@@ -52,6 +55,11 @@ export function DashboardPage() {
 
   const recent = useAsync(
     (signal) => jobsApi.search({ size: RECENT_COUNT, sort: 'postedAt,desc' }, signal),
+    [],
+  );
+
+  const tracked = useAsync(
+    (signal) => trackingApi.list({ size: TRACKED_PREVIEW_COUNT }, signal),
     [],
   );
 
@@ -108,8 +116,12 @@ export function DashboardPage() {
 
         <Card className="stat">
           <p className="stat-label">Tracked companies</p>
-          <p className="stat-value stat-value-pending">Coming soon</p>
-          <p className="stat-note">Following companies arrives in a later release</p>
+          <p className="stat-value">
+            {tracked.state.status === 'success' ? tracked.state.data.totalElements : '—'}
+          </p>
+          <p className="stat-note">
+            <Link to="/tracked-companies">View all</Link>
+          </p>
         </Card>
       </section>
 
@@ -179,6 +191,54 @@ export function DashboardPage() {
                   matchScore={item.score}
                   matchScored={item.scored}
                 />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="tracked-heading">
+        <div className="section-head">
+          <h2 className="section-title" id="tracked-heading">
+            Tracked companies
+          </h2>
+          {tracked.state.status === 'success' && tracked.state.data.totalElements > 0 && (
+            <Link to="/tracked-companies">View all</Link>
+          )}
+        </div>
+
+        {tracked.state.status === 'loading' && (
+          <LoadingState message="Loading tracked companies" />
+        )}
+
+        {tracked.state.status === 'error' && (
+          <ErrorState
+            message="Unable to load your tracked companies."
+            traceId={tracked.state.error.traceId}
+            onRetry={tracked.reload}
+          />
+        )}
+
+        {tracked.state.status === 'success' && tracked.state.data.content.length === 0 && (
+          <EmptyState
+            title="No tracked companies yet"
+            description="Open a company from any job and track it to keep it here."
+            action={
+              <Link className="btn btn-secondary" to="/jobs">
+                Explore jobs
+              </Link>
+            }
+          />
+        )}
+
+        {tracked.state.status === 'success' && tracked.state.data.content.length > 0 && (
+          <ul className="tracked-strip">
+            {tracked.state.data.content.map((company) => (
+              <li key={company.companyId}>
+                <Link className="tracked-chip" to={`/companies/${company.companyId}`}>
+                  <Avatar name={company.name} logoUrl={company.logoUrl} size="sm" />
+                  <span>{company.name}</span>
+                </Link>
               </li>
             ))}
           </ul>

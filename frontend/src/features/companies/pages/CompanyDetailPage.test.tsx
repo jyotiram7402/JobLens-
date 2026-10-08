@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { renderWithProviders } from '../../../test/render';
+import { renderWithProviders, testUser } from '../../../test/render';
 import { ApiError } from '../../../services/api/ApiError';
 import { companiesApi } from '../api';
 import { jobsApi } from '../../jobs/api';
+import { trackingApi } from '../../tracking/api';
 import { CompanyDetailPage } from './CompanyDetailPage';
 import type { Company } from '../types';
 import type { JobSummary } from '../../jobs/types';
@@ -12,6 +13,9 @@ import type { JobSummary } from '../../jobs/types';
 vi.mock('../api', () => ({ companiesApi: { byId: vi.fn() } }));
 vi.mock('../../jobs/api', () => ({
   jobsApi: { search: vi.fn(), byId: vi.fn(), byCompany: vi.fn() },
+}));
+vi.mock('../../tracking/api', () => ({
+  trackingApi: { track: vi.fn(), untrack: vi.fn(), status: vi.fn(), list: vi.fn() },
 }));
 
 const companyMock = vi.mocked(companiesApi.byId);
@@ -55,12 +59,12 @@ function emptyPage() {
   };
 }
 
-function renderPage() {
+function renderPage(options: { signedIn?: boolean } = {}) {
   return renderWithProviders(
     <Routes>
       <Route path="/companies/:companyId" element={<CompanyDetailPage />} />
     </Routes>,
-    { route: `/companies/${COMPANY_ID}` },
+    { route: `/companies/${COMPANY_ID}`, user: options.signedIn ? testUser : null },
   );
 }
 
@@ -69,6 +73,8 @@ describe('CompanyDetailPage', () => {
     companyMock.mockReset();
     jobsMock.mockReset();
     jobsMock.mockResolvedValue(emptyPage());
+    // Reset so "not called" assertions do not depend on test order.
+    vi.mocked(trackingApi.status).mockReset();
   });
 
   it('shows the company information', async () => {
@@ -147,5 +153,41 @@ describe('CompanyDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Example Company', level: 1 }))
       .toBeInTheDocument();
     expect(screen.getByText(/Unable to load this company/)).toBeInTheDocument();
+  });
+
+  it('invites a signed-out visitor to sign in to track the company', async () => {
+    companyMock.mockResolvedValue(company);
+
+    renderPage({ signedIn: false });
+
+    expect(await screen.findByRole('link', { name: 'Sign in to track' })).toBeInTheDocument();
+    expect(trackingApi.status).not.toHaveBeenCalled();
+  });
+
+  it('offers a signed-in user the track button for this company', async () => {
+    companyMock.mockResolvedValue(company);
+    vi.mocked(trackingApi.status).mockResolvedValue({
+      companyId: COMPANY_ID,
+      tracked: false,
+      trackedAt: null,
+    });
+
+    renderPage({ signedIn: true });
+
+    expect(await screen.findByRole('button', { name: /Track company Example Company/ }))
+      .toBeInTheDocument();
+    expect(trackingApi.status).toHaveBeenCalledWith(COMPANY_ID, expect.anything());
+  });
+
+  it('keeps the company page working when the tracking status cannot be loaded', async () => {
+    // Tracking is a side panel. Its failure must never take the page with it.
+    companyMock.mockResolvedValue(company);
+    vi.mocked(trackingApi.status).mockRejectedValue(new Error('network'));
+
+    renderPage({ signedIn: true });
+
+    expect(await screen.findByRole('heading', { name: 'Example Company', level: 1 }))
+      .toBeInTheDocument();
+    expect(await screen.findByText(/Could not load whether you track/)).toBeInTheDocument();
   });
 });

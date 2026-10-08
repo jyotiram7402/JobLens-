@@ -12,6 +12,7 @@ import { JobDetailPage } from '../features/jobs/pages/JobDetailPage';
 import { CompanyDetailPage } from '../features/companies/pages/CompanyDetailPage';
 import { ProfilePage } from '../features/profile/pages/ProfilePage';
 import { ScanPage } from '../features/scan/pages/ScanPage';
+import { TrackedCompaniesPage } from '../features/tracking/pages/TrackedCompaniesPage';
 
 /**
  * Sends signed-out visitors to the login page.
@@ -50,10 +51,9 @@ function RequireAuth() {
  * because discovery is the product, and the backend serves those endpoints to
  * anonymous callers. Only the pages that genuinely need a profile are gated.
  *
- * <p><b>Planned, not yet routed:</b> `/tracked-companies` (step 10). Note that
- * a future `/jobs/recommended` route would have to be declared <em>before</em>
- * `/jobs/:jobId`, or "recommended" is parsed as a job id — recommendations
- * currently live on the dashboard instead.
+ * <p>Note for later: a future `/jobs/recommended` route would have to be
+ * declared <em>before</em> `/jobs/:jobId`, or "recommended" is parsed as a job
+ * id — recommendations currently live on the dashboard instead.
  */
 export const router = createBrowserRouter([
   {
@@ -75,6 +75,7 @@ export const router = createBrowserRouter([
         element: <RequireAuth />,
         children: [
           { path: 'dashboard', element: <DashboardPage /> },
+          { path: 'tracked-companies', element: <TrackedCompaniesPage /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'scan', element: <ScanPage /> },
         ],

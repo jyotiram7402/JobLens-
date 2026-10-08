@@ -242,6 +242,33 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] Responsive layout with a mobile navigation toggle
 - [x] Tests: JobCard, JobsPage, JobDetailPage, CompanyDetailPage, DashboardPage
 
+### Step 10 - Company tracking
+
+- [x] `V7__create_tracked_companies_table.sql`: `UNIQUE (user_id, company_id)`,
+      index on `company_id`, `ON DELETE CASCADE` on both keys
+- [x] `TrackedCompany` entity in the `tracking` module
+- [x] `TrackedCompanyRepository` — entity graph on the list, single-statement
+      delete
+- [x] `TrackingService` — idempotent track and untrack; concurrent duplicates
+      resolved in a fresh transaction via `TransactionTemplate`
+- [x] `POST`/`DELETE`/`GET /companies/{id}/track`,
+      `GET /users/me/tracked-companies` — no user id accepted anywhere
+- [x] `SecurityConfig`: status route carved out ahead of the public
+      `GET /companies/**` rule
+- [x] `track` reserved as a company slug, so `/companies/by-slug/track` cannot
+      lock anonymous visitors out of a real company page
+- [x] `TrackButton` — two visible states, confirmed not optimistic, disabled in
+      flight, announced through a live region
+- [x] Track button on the company page; sign-in prompt when signed out
+- [x] `/tracked-companies` page with immediate untrack and pagination
+- [x] Dashboard tile and preview strip using the real count
+- [x] Navigation entry
+- [x] Backend tests: repository, service (including the race path),
+      integration (security, idempotency, isolation between users)
+- [x] Frontend tests: TrackButton, TrackedCompaniesPage; dashboard and company
+      page tests updated
+- [x] `docs/api/tracking.md`
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -265,12 +292,23 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 10 - Tracking
+### Step 11 - Scan
 
-- [ ] Track and untrack companies and jobs
-- [ ] Application status per tracked job
-- [ ] Tracking views, and the dashboard's "Tracked companies" tile made real
-- [ ] A `/tracked-companies` route
+- [ ] Image upload / camera capture page
+- [ ] Upload endpoint and storage strategy
+- [ ] Scan result UI, with recognition stubbed
+
+### Deferred from Step 10
+
+- [ ] Job tracking and per-job application status (the roadmap originally put
+      these in step 10; this step built company tracking only, as briefed)
+- [ ] A "track" control on job cards and the job detail page's company panel
+- [ ] Counts of how many users track a company — `ix_tracked_companies_company_id`
+      already supports it
+- [ ] An index on `(user_id, created_at)` if a user ever tracks enough companies
+      for the in-memory sort to matter
+- [ ] Job alerts for tracked companies — explicitly out of scope until
+      notifications exist
 
 ### Deferred from Step 9
 

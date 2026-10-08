@@ -166,7 +166,8 @@ Full request/response examples, validation rules and status codes:
 | `/dashboard` | Greeting by name, recommended jobs with match scores, recent openings, and a profile-completion figure that names what is missing |
 | `/jobs` | Keyword search with location, employment type, work mode, experience and sort filters — all in the URL, all applied by the backend |
 | `/jobs/:id` | Full job description, details, apply link, and your match breakdown |
-| `/companies/:id` | Company information and its open positions |
+| `/companies/:id` | Company information, its open positions, and a Track button |
+| `/tracked-companies` | The companies you follow, most recent first, with untrack on each card |
 | `/profile` | Skills, experience and preferences — the things matching scores against |
 
 Two things worth knowing about how it behaves:
@@ -177,9 +178,9 @@ applied by the backend; nothing is fetched wholesale and narrowed in the
 browser.
 
 **Nothing is invented.** Dashboard figures come from the API or are derived from
-data already on the page; tracked companies says "Coming soon" because the
-feature does not exist. A job with no match shows why — "complete your profile",
-or the backend's own explanation — never a placeholder percentage.
+data already on the page — including the tracked-companies count, which is the
+backend's own total. A job with no match shows why — "complete your profile", or
+the backend's own explanation — never a placeholder percentage.
 
 ### Frontend
 
@@ -221,6 +222,29 @@ distant parts of the tree and no page that fetches the same thing twice. Both
 are easy to add later and awkward to unpick.
 
 Setup, scripts and deployment: [frontend/README.md](frontend/README.md).
+
+### Company tracking
+
+Follow the companies you are interested in, from any company page.
+
+```
+POST   /api/v1/companies/{companyId}/track     track       (200 + status)
+DELETE /api/v1/companies/{companyId}/track     untrack     (204)
+GET    /api/v1/companies/{companyId}/track     status
+GET    /api/v1/users/me/tracked-companies      your list, newest first, paginated
+```
+
+All four need a token, and **none accepts a user id** — the backend acts for the
+user the token belongs to, so nobody can read or change someone else's list.
+
+**One user, one company, one row** — enforced by a unique constraint in the
+database, not just a check in code, because a check-then-insert is not atomic.
+Tracking and untracking are **idempotent**: tracking twice returns the original
+relationship, untracking something not tracked succeeds, and two simultaneous
+track requests both succeed with one row between them. A double-click is never
+an error.
+
+Full reference: [docs/api/tracking.md](docs/api/tracking.md).
 
 ### Job matching
 

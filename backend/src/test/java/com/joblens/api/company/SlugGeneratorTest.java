@@ -59,6 +59,14 @@ class SlugGeneratorTest {
     }
 
     @Test
+    void neverIssuesASlugThatCollidesWithARoute() {
+        // /companies/by-slug/track would otherwise be the authenticated tracking
+        // route, and a company called "Track" would have a public page nobody
+        // signed out could open.
+        assertThat(SlugGenerator.generate("Track", slug -> false)).isEqualTo("track-2");
+    }
+
+    @Test
     void rejectsNameWithNothingToSlugify() {
         assertThatThrownBy(() -> SlugGenerator.generate("!!!", slug -> false))
                 .isInstanceOf(IllegalArgumentException.class);

@@ -10,6 +10,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', requiresAuth: true },
   { to: '/jobs', label: 'Jobs', requiresAuth: false },
+  { to: '/tracked-companies', label: 'Tracked companies', requiresAuth: true },
   { to: '/profile', label: 'Profile', requiresAuth: true },
   { to: '/scan', label: 'Scan', requiresAuth: true },
 ];

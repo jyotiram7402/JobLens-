@@ -105,6 +105,16 @@ public class SecurityConfig {
                         // Job search additionally narrows itself for anonymous
                         // callers: JobController requires a token before it
                         // will list withdrawn positions.
+                        //
+                        // Tracking status MUST come before the companies
+                        // wildcard. It is a GET under /companies/**, so listed
+                        // afterwards the permitAll below would match it first and
+                        // it would be served anonymously -- and then fail inside
+                        // the controller, which needs a user. The POST and DELETE
+                        // on the same path are not GETs, so they fall through to
+                        // the authenticated default without help.
+                        .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/companies/*/track")
+                            .authenticated()
                         .requestMatchers(HttpMethod.GET, ApiRoutes.API_V1 + "/companies/**").permitAll()
 
                         // These two MUST come before the jobs wildcard below.

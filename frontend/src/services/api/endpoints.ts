@@ -47,6 +47,16 @@ export const endpoints = {
     update: (companyId: string) => `/companies/${companyId}`,
   },
 
+  tracking: {
+    /**
+     * Authenticated. POST to track, DELETE to untrack, GET for the status —
+     * one path, three methods. Track and untrack are idempotent.
+     */
+    company: (companyId: string) => `/companies/${companyId}/track`,
+    /** Authenticated. The signed-in user's tracked companies, newest first. */
+    mine: '/users/me/tracked-companies',
+  },
+
   jobs: {
     /**
      * Public. Search and filtering — `search`, `companyId`, `location`,

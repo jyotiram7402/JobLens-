@@ -15,6 +15,7 @@ afterwards would break every link that already points at them.
 | [07](day-07.md) | 2026-09-28 | 7 | The job matching engine |
 | [08](day-08.md) | 2026-10-08 | 8 | React frontend foundation |
 | [09](day-09.md) | 2026-10-08 | 9 | Dashboard and the company/job UI |
+| [10](day-10.md) | 2026-10-08 | 10 | Company tracking |
 
 Roadmap steps live in [../../ROADMAP.md](../../ROADMAP.md); the current
 checklist is [../../TODO.md](../../TODO.md).

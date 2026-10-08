@@ -489,3 +489,102 @@ textarea.field-input {
   resize: vertical;
   font-family: inherit;
 }
+
+/* ---------- step 10: tracking ---------- */
+
+.company-header-text {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.track-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* The tick and the word carry the state; the colour only reinforces it. */
+.track-state {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-positive);
+}
+
+.company-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+.company-card {
+  height: 100%;
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.company-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.company-card-headings {
+  min-width: 0;
+}
+
+.company-card-name {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.company-card-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.company-card-name a:hover {
+  text-decoration: underline;
+}
+
+.company-card-meta,
+.company-card-tracked {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+/* Dashboard: a compact row of tracked companies rather than full cards. */
+.tracked-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tracked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
+  min-height: 2.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.tracked-chip:hover {
+  border-color: var(--color-accent);
+}

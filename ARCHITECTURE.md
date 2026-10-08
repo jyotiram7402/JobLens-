@@ -222,6 +222,7 @@ Migrations so far:
 | `V4__create_jobs_table.sql` | The `jobs` table, its constraints and its foreign key index. |
 | `V5__add_job_search_indexes.sql` | The composite index serving the default job search. |
 | `V6__create_skills_tables.sql` | The shared `skills` vocabulary plus `job_skills` and `user_profile_skills`, backfilled from the old `user_skills` table, which it drops. |
+| `V7__create_tracked_companies_table.sql` | `tracked_companies`, with `UNIQUE (user_id, company_id)` and an index on `company_id`. |
 
 Each domain gets its own numbered migration in its own step. Applied migrations
 are never edited or renamed — a change means a new version.
@@ -822,6 +823,80 @@ discovery, so `/jobs/recommended` and `/jobs/*/match` are listed **before** it i
 order and the first match wins; listed afterwards, a user's match results would
 become an anonymous read. There is a test for exactly that.
 
+### Company tracking
+
+```
+User 1 ──── * TrackedCompany * ──── 1 Company
+```
+
+A user follows companies. One row per pair, in `tracked_companies`.
+
+#### An entity, not a join table on User
+
+`TrackedCompany` is its own entity rather than a `@ManyToMany Set<Company>` on
+`User`, for two reasons. It carries data of its own — when tracking started —
+which a bare join table cannot. And it keeps the relationship owned by the
+`tracking` module: a set of companies on `User` would make the user module know
+about tracking, which is backwards.
+
+#### The database enforces the one rule that matters
+
+`UNIQUE (user_id, company_id)`. Not only a check in code, because a
+check-then-insert is not atomic: a double-click can send two requests that both
+see "not tracked" and both insert. Only the database can settle that.
+
+The constraint's index has `user_id` leading, so it also serves every "this
+user's tracked companies" lookup, and there is no separate `user_id` index.
+`company_id` gets its own, which the foreign key needs.
+
+Both foreign keys are `ON DELETE CASCADE` — the opposite of `jobs.company_id`,
+which is `RESTRICT`. A job is real data and destroying it silently would be a
+loss; a tracking row is a preference about two other things and means nothing
+once either is gone.
+
+#### Idempotent, including under concurrency
+
+Tracking something already tracked returns `200` with the existing row;
+untracking something not tracked returns `204`. Neither is an error, because
+neither is a mistake — the user asked for a state, and the state holds.
+
+The concurrent case needed more care than it looks. When two inserts race, the
+loser gets a constraint violation, and at that point **its transaction is
+rollback-only**: PostgreSQL refuses further statements in it and Spring throws on
+commit. Catching the exception inside an `@Transactional` method and carrying on
+is the classic mistake — it looks right and fails at commit. So `track` uses a
+`TransactionTemplate` to make the two transactions explicit: the insert runs in
+one; on a violation, a *new* one reads the winner's row and returns it. If there
+is no row afterwards, the violation was not a race and is rethrown rather than
+swallowed.
+
+#### Status: a dedicated endpoint, not a field on the company
+
+`GET /companies/{id}` is public and identical for every caller. A `tracked` field
+would make one URL return different bodies to different people, couple the
+company module to tracking, and cost a tracking query on every anonymous view.
+`GET /companies/{id}/track` costs one small request, made only when signed in.
+
+#### Security, and a route collision
+
+No endpoint accepts a user id; the user always comes from the token, as with
+`/users/me`.
+
+`GET /companies/**` is public, so the status endpoint is listed **ahead** of it
+in `SecurityConfig` — the same ordering trap as the matching routes. Building
+that matcher exposed a collision: `/companies/by-slug/track` has the shape of
+the tracking route, so security treats it as authenticated, and a company whose
+slug was `track` would have a public page nobody signed out could open. The fix
+is at the source: `track` is a reserved slug, so such a company gets `track-2`.
+Any future action segment under `/companies/{id}/...` belongs in the same set.
+
+#### N+1
+
+The list uses `@EntityGraph(attributePaths = "company")`: one query for the page
+with companies fetched alongside, plus one count. Safe with pagination because
+the association is to-one. Untracking is a single `DELETE` statement rather than
+Spring Data's derived delete, which loads each row before removing it.
+
 ### API versioning
 
 Every endpoint is versioned from the first one: `/api/v1/...`, built from the
@@ -1098,16 +1173,17 @@ Every figure is returned by the backend or derived from data already on the page
 | Recommended jobs | `totalElements` from `/jobs/recommended` |
 | Strong matches | Counted over the loaded recommendations, labelled "in your top 5" |
 | Profile completion | Derived from the six profile fields matching actually uses |
-| Tracked companies | "Coming soon" — the feature does not exist yet |
+| Tracked companies | `totalElements` from `/users/me/tracked-companies` (step 10; "Coming soon" before that) |
 
 Profile completion is measured against the six fields that change a score, not
 every field on the profile. A percentage driven by a summary paragraph nobody
 matches on would be a number that means nothing. The tile names the missing
 fields, which ties directly to the criteria matching reports as "not compared".
 
-A zero for tracked companies would read as a fact about the user's data. It is
-not — the feature is not built — and one invented number makes every other
-number on the page untrustworthy.
+Until tracking existed, that tile said "Coming soon" rather than 0: a zero would
+have read as a fact about the user's data when the feature simply was not built,
+and one invented number makes every other number on the page untrustworthy.
+Step 10 replaced it with the backend's real count.
 
 ### Loading, error and empty are three different things
 
@@ -1153,6 +1229,37 @@ Route protection mirrors the backend's own rules rather than inventing stricter
 ones: job and company browsing is public, and only the pages that need a profile
 are gated. It remains a convenience, not a security boundary — the backend
 rejects unauthenticated requests itself.
+
+### Tracking in the UI
+
+`TrackButton` is shared by the company page and the tracked-companies list.
+
+- **Two visible states, not a flipping toggle.** "✓ Tracked" plus an explicit
+  "Untrack" button cannot be misread; a toggle labelled "Tracked" leaves the user
+  guessing which way it will go.
+- **Confirmed, not optimistic.** The state changes after the server answers. The
+  request is fast and idempotent, so honesty costs a few hundred milliseconds,
+  and an optimistic tick that later reverts is how a button loses trust.
+- **Disabled while in flight**, so a double-click sends one request — the
+  backend would cope with two, but there is no reason to send one that cannot
+  change anything.
+- **Announced** through a live region that always exists, because screen readers
+  often ignore a live region that only appears when there is something to say.
+- **Self-contained**: it fetches its own status and fails on its own, so a
+  tracking error never takes the company page with it.
+
+The tracked list passes `initialTracked`, which skips the status request — every
+row in that list is tracked by definition, and asking twelve times would be
+twelve wasted requests.
+
+Untracking from the list removes the card immediately, because the server has
+already confirmed the delete. The count shown is the server's total minus what
+has been untracked since the last fetch; whenever a fetch completes the server's
+list becomes the truth again, which is what stops a removal being counted twice.
+
+The dashboard's tracked-companies tile now shows the backend's
+`totalElements`, replacing "Coming soon". One request serves both the tile and
+the preview strip.
 
 ### Safety at the edges
 

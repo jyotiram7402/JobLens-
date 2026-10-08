@@ -4,6 +4,7 @@ import { renderWithProviders, testUser } from '../../../test/render';
 import { ApiError } from '../../../services/api/ApiError';
 import { matchingApi } from '../../matching/api';
 import { jobsApi } from '../../jobs/api';
+import { trackingApi } from '../../tracking/api';
 import { DashboardPage } from './DashboardPage';
 import type { JobSummary } from '../../jobs/types';
 
@@ -15,8 +16,13 @@ vi.mock('../../jobs/api', () => ({
   jobsApi: { search: vi.fn(), byId: vi.fn(), byCompany: vi.fn() },
 }));
 
+vi.mock('../../tracking/api', () => ({
+  trackingApi: { track: vi.fn(), untrack: vi.fn(), status: vi.fn(), list: vi.fn() },
+}));
+
 const recommendedMock = vi.mocked(matchingApi.recommended);
 const searchMock = vi.mocked(jobsApi.search);
+const trackedMock = vi.mocked(trackingApi.list);
 
 const job: JobSummary = {
   id: '22222222-2222-2222-2222-222222222222',
@@ -43,8 +49,10 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     recommendedMock.mockReset();
     searchMock.mockReset();
+    trackedMock.mockReset();
     recommendedMock.mockResolvedValue(emptyPage());
     searchMock.mockResolvedValue(emptyPage());
+    trackedMock.mockResolvedValue(emptyPage());
   });
 
   it('greets the signed-in user by their real name', async () => {
@@ -86,12 +94,47 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Missing: Summary|Missing: /)).toBeInTheDocument();
   });
 
-  it('says tracked companies are not built yet instead of showing a zero', async () => {
-    // A zero would read as a fact about the user's data. It is not: the
-    // feature does not exist.
+  it('shows the tracked-company count the backend reports, and the companies', async () => {
+    // The count is the server's total, not the length of the preview list:
+    // the dashboard only loads the first few.
+    trackedMock.mockResolvedValue({
+      ...emptyPage(),
+      content: [
+        {
+          companyId: '44444444-4444-4444-4444-444444444444',
+          name: 'Alpha Systems',
+          slug: 'alpha-systems',
+          logoUrl: null,
+          industry: null,
+          location: null,
+          websiteUrl: null,
+          careersUrl: null,
+          trackedAt: new Date().toISOString(),
+        },
+      ],
+      totalElements: 9,
+      totalPages: 2,
+    });
+
     renderWithProviders(<DashboardPage />, { user: testUser });
 
-    expect(await screen.findByText('Coming soon')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Alpha Systems' })).toHaveAttribute(
+      'href',
+      '/companies/44444444-4444-4444-4444-444444444444',
+    );
+    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'View all' })[0]).toHaveAttribute(
+      'href',
+      '/tracked-companies',
+    );
+  });
+
+  it('shows a useful empty state when nothing is tracked yet', async () => {
+    renderWithProviders(<DashboardPage />, { user: testUser });
+
+    expect(await screen.findByText('No tracked companies yet')).toBeInTheDocument();
+    // No invented number: the tile shows the backend's real zero.
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
   });
 
   it('asks for a profile instead of reporting an error when there is nothing to match', async () => {
