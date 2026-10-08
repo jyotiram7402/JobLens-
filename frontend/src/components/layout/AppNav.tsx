@@ -3,35 +3,37 @@ import { NavLink } from 'react-router-dom';
 interface NavItem {
   to: string;
   label: string;
+  /** Hidden from signed-out visitors, because the page would redirect anyway. */
+  requiresAuth: boolean;
 }
 
-/**
- * The application's primary navigation.
- *
- * <p>Everything except Home needs an account. The links are shown regardless
- * for now, because authentication is not wired up yet and hiding them would
- * leave nothing to navigate. Once sign-in works this list is filtered by it --
- * one place to change.
- */
 const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/jobs', label: 'Jobs' },
-  { to: '/profile', label: 'Profile' },
-  { to: '/scan', label: 'Scan' },
+  { to: '/dashboard', label: 'Dashboard', requiresAuth: true },
+  { to: '/jobs', label: 'Jobs', requiresAuth: false },
+  { to: '/profile', label: 'Profile', requiresAuth: true },
+  { to: '/scan', label: 'Scan', requiresAuth: true },
 ];
 
-export function AppNav() {
+interface AppNavProps {
+  signedIn: boolean;
+  /** Closes the mobile menu after navigating. */
+  onNavigate?: () => void;
+}
+
+export function AppNav({ signedIn, onNavigate }: AppNavProps) {
+  const items = NAV_ITEMS.filter((item) => signedIn || !item.requiresAuth);
+
   return (
-    // <nav> with a label, because a page can have several navigation regions
-    // and a screen reader user needs to tell them apart. NavLink sets
-    // aria-current="page" on the active link by itself, so the current page is
-    // announced and not only highlighted.
+    // Labelled, because a page can have several navigation regions and a screen
+    // reader user needs to tell them apart. NavLink sets aria-current="page"
+    // itself, so the current page is announced and not only highlighted.
     <nav className="app-nav" aria-label="Main">
       <ul className="app-nav-list">
-        {NAV_ITEMS.map((item) => (
+        {items.map((item) => (
           <li key={item.to}>
             <NavLink
               to={item.to}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 isActive ? 'app-nav-link app-nav-link-active' : 'app-nav-link'
               }

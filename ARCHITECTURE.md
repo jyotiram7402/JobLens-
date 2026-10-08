@@ -1012,6 +1012,160 @@ Static build to `dist/`, Root Directory `frontend`. `vercel.json` rewrites all
 paths to `index.html`, which client-side routing needs — without it, reloading
 `/jobs/123` returns a CDN 404. No backend URL is hard-coded anywhere.
 
+## The product UI
+
+```
+React UI
+   │
+   ├── Dashboard
+   ├── Job Search
+   ├── Job Details
+   └── Company Details
+          │
+          ▼
+     Feature API        features/*/api.ts
+          │
+          ▼
+     Shared API Client  services/api/client.ts
+          │
+          ▼
+     Spring Boot API
+```
+
+No component calls `fetch` or the shared client directly. A feature's `api.ts`
+is the only thing that knows which endpoint serves it, so a route change is one
+edit and a call site reads as what it means rather than as a URL.
+
+### Job search: the URL is the state
+
+Every filter lives in the query string —
+`?search=java&location=Pune&workMode=HYBRID&page=1`. That is what makes a search
+refreshable, shareable and navigable with the Back button. Holding the same
+values in component state as well would mean two sources of truth that drift the
+moment someone edits the address bar.
+
+The one exception is the keyword box, which keeps a local value so typing stays
+responsive and writes it to the URL after a 300 ms debounce. Pushing every
+keystroke into the URL would fill the history with half-typed words and fire a
+request for each one.
+
+Any change other than paging resets to page 0. Staying on page 4 while narrowing
+a search is how a user ends up on an empty page and concludes there are no
+results.
+
+**All filtering is backend filtering.** Nothing fetches a large list and narrows
+it in the browser, which only works until there is more data than fits in a page.
+
+### Job details: two independent requests
+
+The job and the match are fetched separately and deliberately not combined. The
+job is public and almost always available; the match needs a signed-in user with
+a filled-in profile and frequently is not. Tying them together would mean an
+empty profile hides the job.
+
+`MatchPanel` fetches its own data and degrades on its own:
+
+| Situation | What the user sees |
+| --------- | ------------------ |
+| Not signed in | An invitation to sign in |
+| `422 PROFILE_NOT_READY` | "Complete your profile", linked to it |
+| `scored: false` | The backend's own explanation, and the same link |
+| Any other failure | "Unavailable right now. The rest of this page still works." |
+
+Never a placeholder percentage. A fake score is worse than no score, because the
+user would act on it.
+
+An inapplicable criterion renders as "not compared", not as `0/50`. The backend
+excluded it from the total *along with its weight*, so showing a zero would
+misrepresent the arithmetic and read as a failure the user did not have.
+
+### Company details
+
+The company and its openings are two independent requests, so a company with no
+jobs — or a failure loading them — still renders the company.
+
+The openings come from `GET /jobs?companyId=…`. There is no
+`/companies/{id}/jobs` endpoint, and using the ordinary search with one more
+filter means that list inherits pagination, sorting and every other filter
+rather than being a second code path that would have to grow them separately.
+
+### Dashboard: no invented numbers
+
+Every figure is returned by the backend or derived from data already on the page:
+
+| Tile | Source |
+| ---- | ------ |
+| Recommended jobs | `totalElements` from `/jobs/recommended` |
+| Strong matches | Counted over the loaded recommendations, labelled "in your top 5" |
+| Profile completion | Derived from the six profile fields matching actually uses |
+| Tracked companies | "Coming soon" — the feature does not exist yet |
+
+Profile completion is measured against the six fields that change a score, not
+every field on the profile. A percentage driven by a summary paragraph nobody
+matches on would be a number that means nothing. The tile names the missing
+fields, which ties directly to the criteria matching reports as "not compared".
+
+A zero for tracked companies would read as a fact about the user's data. It is
+not — the feature is not built — and one invented number makes every other
+number on the page untrustworthy.
+
+### Loading, error and empty are three different things
+
+Every data-backed view handles all three, through `useAsync` and the shared
+`LoadingState` / `ErrorState` / `EmptyState` components.
+
+Empty is not an error: an unmatched search is a *successful* request, and the
+backend returns 200 with an empty array for exactly that reason. Error states
+show the `traceId` — the same value on every backend log line for that request —
+and offer a retry. Neither ever renders a raw server message for a 5xx.
+
+### useAsync
+
+A small hook rather than a data-fetching library. It aborts on unmount and
+ignores stale responses; without the latter, typing a search quickly lets an
+earlier, slower response overwrite a later one and the list shows results for a
+query the user has already changed.
+
+No cache, no retries, no deduplication. When several pages genuinely need the
+same data at once, that is the signal to reach for TanStack Query, which can
+wrap this without any page changing.
+
+### Authentication
+
+`AuthContext` holds the signed-in user — the one value genuinely needed across
+the tree: the header, the dashboard greeting, the route guard and the match
+panel. Context, not a store: one shared value is not a state-management problem.
+
+The user is fetched from `/users/me` rather than decoded from the JWT. The token
+carries an id, an email and a role and nothing else, because a signed but
+unencrypted token is a bad place for personal data.
+
+On load, a token that survived a refresh is *used* rather than trusted — an
+expired token still looks valid in storage, so a 401 clears it rather than
+leaving the app half-signed-in. The guard waits for that check before
+redirecting; without the wait, a refresh bounces a signed-in user to `/login`
+for a moment, which looks exactly like being randomly logged out.
+
+Registration signs the user in afterwards, because the backend deliberately
+issues no token there and that is not a detail the form should carry.
+
+Route protection mirrors the backend's own rules rather than inventing stricter
+ones: job and company browsing is public, and only the pages that need a profile
+are gated. It remains a convenience, not a security boundary — the backend
+rejects unauthenticated requests itself.
+
+### Safety at the edges
+
+- External links (`applyUrl`, company website) use `rel="noopener noreferrer"`.
+  Without `noopener` the opened page can reach back through `window.opener` and
+  navigate this one, and these URLs come from whoever created the record.
+- Job and company descriptions render as text with `white-space: pre-wrap`,
+  never `dangerouslySetInnerHTML`. Treating them as HTML would be a
+  script-injection route through the most-visited page in the product.
+- Sort values are fixed in code rather than taken from user input: the backend
+  rejects anything outside its allowlist with a 400, and there is no reason to
+  let a URL produce one.
+
 ## Frontend / backend relationship
 
 Strictly separated. The React application is a static bundle; it holds no

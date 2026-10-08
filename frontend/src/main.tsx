@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './app/App';
 import './index.css';
+import './styles/product.css';
 
 const container = document.getElementById('root');
 if (!container) {

@@ -1,23 +1,25 @@
 import { RouterProvider } from 'react-router-dom';
 import { ErrorBoundary } from './providers/ErrorBoundary';
+import { AuthProvider } from '../features/auth/AuthContext';
 import { router } from './router';
 
 /**
  * The application root.
  *
- * <p>Everything that wraps the whole app goes here — currently the error
- * boundary and the router. Keeping it separate from `main.tsx` means tests can
- * render the app without touching the DOM bootstrap.
+ * <p>Order matters: the error boundary is outermost, so a failure inside the
+ * auth provider or the router still renders something rather than a blank page.
  *
- * <p>No state-management provider, deliberately. See ARCHITECTURE.md: React
- * state and a little Context are enough for what this application does today,
- * and a store adopted before there is shared state to put in it is a set of
- * conventions without a problem.
+ * <p>`AuthProvider` is the only context here, and it exists because the signed-in
+ * user is genuinely needed in several places — the header, the dashboard, the
+ * route guard, the match panel. Still not a store: one shared value is not a
+ * state-management problem.
  */
 export function App() {
   return (
     <ErrorBoundary>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

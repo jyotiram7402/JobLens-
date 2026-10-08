@@ -1,38 +1,69 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { Button, Card, Input } from '../../../components/ui';
+import { ApiError } from '../../../services/api/ApiError';
+import { useAuth } from '../AuthContext';
+
+interface RedirectState {
+  from?: string;
+}
 
 /**
- * Sign-in form.
+ * Sign-in.
  *
- * <p>Markup and accessibility only — it does not call the API yet. The form is
- * built now so the next step adds a submit handler rather than a whole page,
- * and so the labelling and keyboard behaviour are right from the start instead
- * of being retrofitted.
+ * <p>Returns the user to wherever the guard interrupted them, so following a
+ * link to a protected page and signing in lands on that page rather than
+ * dumping them on the dashboard.
  *
- * <p>When it is wired: POST `/auth/login`, store `accessToken`, redirect. A 401
- * never says whether the email or the password was wrong, so the form must show
- * one message for both — the backend is deliberately vague and the UI must not
- * be more specific than it.
+ * <p>A failed sign-in shows one message for both causes. The backend returns
+ * the same 401 whether the email is unknown or the password is wrong — on
+ * purpose, so the endpoint cannot be used to discover which addresses have
+ * accounts — and the UI must not be more specific than the API it is reporting.
  */
 export function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const redirectTo = (location.state as RedirectState | null)?.from ?? '/dashboard';
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      await login({ email, password });
+      // replace, so Back does not return to the login form after signing in.
+      navigate(redirectTo, { replace: true });
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError ? cause.message : 'Could not sign in. Please try again.',
+      );
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="narrow-page">
       <PageHeader title="Sign in" description="Welcome back to JobLens." />
 
       <Card>
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            // Prevents a page reload while the handler is still a placeholder.
-            event.preventDefault();
-          }}
-        >
+        <form className="stack" onSubmit={handleSubmit}>
           <Input
             label="Email address"
             type="email"
             name="email"
             autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             required
           />
           <Input
@@ -40,12 +71,18 @@ export function LoginPage() {
             type="password"
             name="password"
             autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
             required
           />
 
-          <p className="form-note">Sign-in is connected in the next step.</p>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
 
-          <Button type="submit" disabled>
+          <Button type="submit" loading={submitting}>
             Sign in
           </Button>
         </form>

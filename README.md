@@ -157,6 +157,30 @@ There is no `DELETE`: jobs, tracking and scans will reference companies, and an
 Full request/response examples, validation rules and status codes:
 [docs/api/companies.md](docs/api/companies.md).
 
+### What you can do in the app
+
+| Page | What it does |
+| ---- | ------------ |
+| `/` | Landing page, plus an environment check that reports whether the frontend can reach its backend |
+| `/register`, `/login` | Create an account or sign in. Registering signs you in. |
+| `/dashboard` | Greeting by name, recommended jobs with match scores, recent openings, and a profile-completion figure that names what is missing |
+| `/jobs` | Keyword search with location, employment type, work mode, experience and sort filters — all in the URL, all applied by the backend |
+| `/jobs/:id` | Full job description, details, apply link, and your match breakdown |
+| `/companies/:id` | Company information and its open positions |
+| `/profile` | Skills, experience and preferences — the things matching scores against |
+
+Two things worth knowing about how it behaves:
+
+**Job search state lives in the URL.** `?search=java&location=Pune&workMode=HYBRID`
+is refreshable, shareable and works with the Back button. Every filter is
+applied by the backend; nothing is fetched wholesale and narrowed in the
+browser.
+
+**Nothing is invented.** Dashboard figures come from the API or are derived from
+data already on the page; tracked companies says "Coming soon" because the
+feature does not exist. A job with no match shows why — "complete your profile",
+or the backend's own explanation — never a placeholder percentage.
+
 ### Frontend
 
 React 18 + TypeScript + Vite, organised by feature rather than by layer:

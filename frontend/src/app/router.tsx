@@ -1,5 +1,7 @@
-import { createBrowserRouter, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, createBrowserRouter, useLocation } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
+import { LoadingState } from '../components/ui';
+import { useAuth } from '../features/auth/AuthContext';
 import { HomePage } from './pages/HomePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { LoginPage } from '../features/auth/pages/LoginPage';
@@ -12,47 +14,46 @@ import { ProfilePage } from '../features/profile/pages/ProfilePage';
 import { ScanPage } from '../features/scan/pages/ScanPage';
 
 /**
- * Where the authentication guard will go.
+ * Sends signed-out visitors to the login page.
  *
- * <p>Routes that need an account are nested under this element, so adding the
- * guard later is an edit to one component rather than to every route. The
- * grouping is the point: it makes "which pages need a login?" answerable by
- * looking at the route table.
+ * <p>Waits for the initial session check first. Without that, a page refresh
+ * would bounce a signed-in user to `/login` for the moment it takes to confirm
+ * their token — which looks exactly like being randomly logged out.
  *
- * <p>It currently renders its children unchanged, on purpose. Sign-in is not
- * connected yet, so redirecting to `/login` would make every page unreachable
- * with no way back in — a guard that locks out the only people who could test
- * it. The check is one line, and the next step adds it:
+ * <p>Remembers where they were going, so signing in lands on the page they
+ * asked for rather than the dashboard.
  *
- * <pre>
- *   if (!tokenStorage.has()) {
- *     return &lt;Navigate to="/login" replace state={{ from: location }} /&gt;;
- *   }
- * </pre>
- *
- * <p>Note that this is a convenience, not a security boundary. The backend
- * rejects unauthenticated requests on its own; hiding a route in the browser
- * stops nothing, and the server is what actually protects the data.
+ * <p><b>This is a convenience, not a security boundary.</b> The backend rejects
+ * unauthenticated requests on its own; hiding a route in the browser protects
+ * nothing. It exists so people see a sign-in form instead of a page of 401s.
  */
-function ProtectedRoutes() {
+function RequireAuth() {
+  const { user, initialising } = useAuth();
+  const location = useLocation();
+
+  if (initialising) {
+    return <LoadingState message="Loading" />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
   return <Outlet />;
 }
 
 /**
  * The route table.
  *
- * <p>Split into public and protected groups. Adding a page means adding one
- * entry under the right group.
+ * <p>Three groups, and the split mirrors the backend's own authorization rules
+ * rather than being a separate opinion: job and company browsing is public
+ * because discovery is the product, and the backend serves those endpoints to
+ * anonymous callers. Only the pages that genuinely need a profile are gated.
  *
- * <p><b>Planned, not yet routed:</b>
- * <ul>
- *   <li>{@code /tracked-companies} — step 10</li>
- *   <li>{@code /jobs/recommended} — step 9, fed by the matching API that
- *       already exists. Note it must be declared <em>before</em>
- *       {@code /jobs/:jobId} or "recommended" is read as an id.</li>
- *   <li>{@code /jobs/:jobId/match} — likely a section of the job detail page
- *       rather than its own route, since the data comes with the job.</li>
- * </ul>
+ * <p><b>Planned, not yet routed:</b> `/tracked-companies` (step 10). Note that
+ * a future `/jobs/recommended` route would have to be declared <em>before</em>
+ * `/jobs/:jobId`, or "recommended" is parsed as a job id — recommendations
+ * currently live on the dashboard instead.
  */
 export const router = createBrowserRouter([
   {
@@ -64,14 +65,16 @@ export const router = createBrowserRouter([
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <RegisterPage /> },
 
+      // Public: discovery works without an account, as it does on the backend.
+      { path: 'jobs', element: <JobsPage /> },
+      { path: 'jobs/:jobId', element: <JobDetailPage /> },
+      { path: 'companies/:companyId', element: <CompanyDetailPage /> },
+
       // Requires an account.
       {
-        element: <ProtectedRoutes />,
+        element: <RequireAuth />,
         children: [
           { path: 'dashboard', element: <DashboardPage /> },
-          { path: 'jobs', element: <JobsPage /> },
-          { path: 'jobs/:jobId', element: <JobDetailPage /> },
-          { path: 'companies/:companyId', element: <CompanyDetailPage /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'scan', element: <ScanPage /> },
         ],

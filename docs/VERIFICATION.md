@@ -455,3 +455,49 @@ Remember it is the **origin** (`http://localhost:8080`), not the API root —
 
 On Vercel, the same checks against the deployed URL, plus a reload of a deep
 link such as `/jobs/abc` to confirm the SPA rewrite still works.
+
+### Step 9 — Dashboard and the company/job UI
+
+This is the first step where the two halves of the project actually talk to each
+other, so most of it can only be checked by using it.
+
+Run the backend on the `dev` profile (seed data loads automatically) and the
+frontend on 5173, then work through this in order:
+
+1. **Register** at `/register`. It should sign you in and land on `/dashboard` —
+   the backend issues no token on registration, so the app logs you in with a
+   second call.
+2. The dashboard should greet you **by your real name**, show
+   `No recommendations yet` with a **Complete profile** link, and show profile
+   completion well under 100% naming the missing fields.
+3. **Fill in the profile**: skills `Java, Spring Boot, Docker`, 3 years,
+   preferred location `Pune`, working arrangement `Hybrid`. Save.
+4. Back on the dashboard: recommendations should now appear **with real scores**,
+   and completion should rise. If recommendations are still empty, the seeded
+   jobs have no skills — check `V9003` applied.
+5. **Open a job.** The match panel should show a score, a per-criterion table,
+   matched and missing skills, and the backend's own explanation sentences. An
+   unscored criterion must read **"not compared"**, never `0/50`.
+6. **Search.** Go to `/jobs`, type `java`, add a location and a work mode. The
+   URL must update as you go. Then **refresh the page** — the filters must
+   survive — and press **Back**.
+7. **Pagination** (needs more than 20 jobs): change page and confirm the filters
+   are preserved in the URL.
+8. **Sign out** and open the same job. It must still render, with the match
+   panel inviting you to sign in. Job and company browsing is public by design.
+9. **Phone width.** Narrow the window below ~768px: the sidebar should collapse
+   to a ☰ toggle, and nothing should scroll sideways.
+
+Things that should specifically *not* happen:
+
+- No page should show a number nobody computed. Tracked companies says
+  "Coming soon"; a job with no match says why.
+- A failing match must not break the job page.
+- An unmatched search must be an empty state, not an error.
+
+Watch the network tab while typing in the search box: there should be roughly
+**one request per pause**, not one per keystroke.
+
+In CI: five more frontend test files. The frontend job runs `typecheck`, `test`
+and `build`, and with this much new TypeScript the type check is the most likely
+place to fail.

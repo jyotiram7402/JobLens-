@@ -219,6 +219,29 @@ proof the code works. This made them a prerequisite, not a final step.
 - [x] `npm test` added to CI
 - [x] `frontend/README.md`; `.env.example` documents origin-not-API-root
 
+### Step 9 - Dashboard and the company/job UI
+
+- [x] `AuthContext` — signed-in user, session restore, login, register, logout
+- [x] Login and registration wired to the API, with field-level errors
+- [x] `RequireAuth` guard that waits for the session check before redirecting
+- [x] Profile editing against `PUT /users/me/profile`
+- [x] Dashboard: greeting by name, derived statistics, recommendations with
+      scores, recent jobs
+- [x] Job search: keyword with debounce, location, employment type, work mode,
+      experience and sort — all in the URL, all applied by the backend
+- [x] Pagination that preserves the filters
+- [x] `JobCard`, shared by search, dashboard and the company page
+- [x] Job detail: description rendered as text, details, apply link with
+      `rel="noopener noreferrer"`, company brief
+- [x] `MatchPanel`: score, per-criterion table, matched and missing skills, the
+      backend's explanation — and a sensible fallback for every failure mode
+- [x] Company detail with its openings, via `/jobs?companyId=`
+- [x] `useAsync` and `useDebouncedValue`
+- [x] `Avatar` with generated initials; `Pagination`
+- [x] Loading, error and empty states on every data-backed view
+- [x] Responsive layout with a mobile navigation toggle
+- [x] Tests: JobCard, JobsPage, JobDetailPage, CompanyDetailPage, DashboardPage
+
 ## Current
 
 Closing the Step 1 verification loop — see
@@ -242,17 +265,22 @@ Setup instructions: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Next
 
-### Step 9 - Frontend features
+### Step 10 - Tracking
 
-- [ ] Connect login and registration; store the token; add the guard to
-      `ProtectedRoutes`
-- [ ] A `useCurrentUser` context so the header and dashboard share one fetch
-- [ ] Job search UI over the existing filters, with pagination and sorting
-- [ ] Job detail, with the match breakdown and explanation
-- [ ] Company detail, listing its jobs via `/jobs?companyId=`
-- [ ] Profile editing — remember PUT is a full replacement
-- [ ] Dashboard: profile summary and recommended jobs
-- [ ] Route `/jobs/recommended` **before** `/jobs/:jobId`
+- [ ] Track and untrack companies and jobs
+- [ ] Application status per tracked job
+- [ ] Tracking views, and the dashboard's "Tracked companies" tile made real
+- [ ] A `/tracked-companies` route
+
+### Deferred from Step 9
+
+- [ ] A company search/browse page — only company *detail* exists, reachable
+      from a job
+- [ ] Tag inputs for skills, roles and locations instead of comma-separated text
+- [ ] Skeleton loaders in place of spinners on the list pages
+- [ ] Match scores on the job search results, which would need either a bulk
+      match endpoint or one request per card
+- [ ] Remember the last search when returning to `/jobs` from a job
 
 ### Deferred from Step 8
 
